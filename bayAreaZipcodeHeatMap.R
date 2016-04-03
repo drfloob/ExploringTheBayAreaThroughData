@@ -164,3 +164,6 @@ accImpCrimes <- acc[getRelevantIndexes(acc$crimedescription),]
 oakImpCrimes <- oak[getRelevantIndexes(oak$description),]
 berkImpCrimes <- berk[getRelevantIndexes(berk$offense),]
 
+# data.table for zipcodes, role="nearest"
+# turn "POINT( x y )" into latitude and longitude values
+# convert lat/lng to zipcodes through data.table(data(zipcode), key=c("latitude", "longitude"))
