@@ -4,8 +4,9 @@ library(gdata)
 library(jsonlite)
 library(RCurl)
 library(zipcode)
-# Parse zillow data by zip code
+library(tidyr)
 
+# Parse zillow data by zip code
 fn <- "zillowData.byZip.dump"
 if(!file.exists(fn)) {
   zdatafn <- "zdata/Zip_Zhvi_SingleFamilyResidence.csv"
@@ -17,8 +18,8 @@ if(!file.exists(fn)) {
   sf <- csv[csv$Metro == "San Francisco" & csv$City %in% c("Oakland", "San Francisco", "San Mateo") & csv$X2016.02 < 900000,]
   sfsimp <- sf[,c("City", "RegionName", "X2016.02")]
   
-  dump(c('sf', 'sfsimp'), fn)
 } else {
+  dump(c('sf', 'sfsimp'), fn)
   source(fn)
 }
 
@@ -41,8 +42,8 @@ if (!file.exists(gfn)) {
                "&key=", apiKey)
     URLencode(u)
   }
-  
   gdata <- list()
+  
   rn <- sfsimp$RegionName
   for (i in seq_along(rn)) {
     
@@ -65,8 +66,8 @@ avgRouteDuration <- function(routes, i) {
     }
     s
   }, routes[i,"legs"], 0)
-}
 
+}
 routefn <- "gdata.routes.dump"
 if (!file.exists(routefn)) {
   distances <- data.frame(zip=numeric(), distance=numeric())
@@ -102,8 +103,8 @@ if (!file.exists(routefn)) {
 
 final <- cbind(distances, midCost=sfsimp[sfsimp$RegionName == distances$zip, "X2016.02"])
 
-
 commonLimits <- "$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'"
+
 pullCrime <- function(url, fn, dt) {
   l <- sprintf(commonLimits, dt)
   if (!file.exists(fn)) {
@@ -123,10 +124,10 @@ accrimeurl <- "https://data.acgov.org/resource/js8f-yfqf.csv?"
 accrimefn <- "cdata/acCrime.csv"
 acc <- pullCrime(accrimeurl, accrimefn, "datetime")
 
-# Oaklang crime API
+# Oakland crime API
 oakcrimeurl <- "https://data.oaklandnet.com/resource/3xav-7geq.csv?"
-oak <- pullCrime(oakcrimeurl, oakcrimefn, "datetime")
 oakcrimefn <- "cdata/oakCrime.csv"
+oak <- pullCrime(oakcrimeurl, oakcrimefn, "datetime")
 
 # Berkeley crime API
 berkcrimeurl <- "https://data.cityofberkeley.info/resource/s24d-wsnp.csv?"
