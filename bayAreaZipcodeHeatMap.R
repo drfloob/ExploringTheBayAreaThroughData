@@ -1,12 +1,19 @@
+
+
 library(gdata)
 library(jsonlite)
 library(RCurl)
-
-
+library(zipcode)
 # Parse zillow data by zip code
+
 fn <- "zillowData.byZip.dump"
 if(!file.exists(fn)) {
-  csv <- read.csv("zdata/Zip_Zhvi_SingleFamilyResidence.csv")
+  zdatafn <- "zdata/Zip_Zhvi_SingleFamilyResidence.csv"
+  zdataurl <- "http://files.zillowstatic.com/research/public/Zip/Zip_Zhvi_SingleFamilyResidence.csv"
+  if (!file.exists(zdatafn)) {
+    download.file(zdataurl, zdatafn)
+  }
+  csv <- read.csv(zdatafn)
   sf <- csv[csv$Metro == "San Francisco" & csv$City %in% c("Oakland", "San Francisco", "San Mateo") & csv$X2016.02 < 900000,]
   sfsimp <- sf[,c("City", "RegionName", "X2016.02")]
   
@@ -18,12 +25,12 @@ if(!file.exists(fn)) {
 # pull google data
 gfn <- "gData.dump"
 if (!file.exists(gfn)) {
-  credFile <- "credentials.dump"
+  credFile <- "credentials.R"
   if (!file.exists(credFile)) {
-    stop("Missing credentials file: credentials.dump. See README.md for formatting")
+    stop("Missing credentials file: credentials.R. See README.md for formatting")
   }
-  source(credFile)
   
+  source(credFile)
   url <- function(zip) {
     root <- "https://maps.googleapis.com/maps/api/directions/json?"
     u <- paste(sep="", 
@@ -46,8 +53,8 @@ if (!file.exists(gfn)) {
   
   dump(c('gdata'), gfn)
 } else {
-  source(gfn)
 }
+  source(gfn)
 
 
 avgRouteDuration <- function(routes, i) {
@@ -70,8 +77,8 @@ if (!file.exists(routefn)) {
     if (file.exists(fn)) {
       source(fn)
     } else {
-      g <- gdata[[n]]
       runsum <- 0
+      g <- gdata[[n]]
       runcnt <- 0
       # dput(list('nrow routes', nrow(g$routes)))
       for (r in 1:nrow(g$routes)) {
