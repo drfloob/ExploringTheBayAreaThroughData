@@ -103,10 +103,64 @@ if (!file.exists(routefn)) {
 final <- cbind(distances, midCost=sfsimp[sfsimp$RegionName == distances$zip, "X2016.02"])
 
 
+commonLimits <- "$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'"
+pullCrime <- function(url, fn, dt) {
+  l <- sprintf(commonLimits, dt)
+  if (!file.exists(fn)) {
+    download.file(paste(sep="", url, l), fn)
+  }
+  read.csv(fn)
+  
+}
 
 # SF crime API
-# https://data.sfgov.org/resource/cuks-n6tp.csv?$limit=50000&$where=date between '2016-01-01' and '2016-03-31'
+sfcrimeurl <- "https://data.sfgov.org/resource/cuks-n6tp.csv?"
+sfcrimefn <- "cdata/sfCrime.csv"
+sfc <- pullCrime(sfcrimeurl, sfcrimefn, "date")
 
+# Alameda County crime API
+accrimeurl <- "https://data.acgov.org/resource/js8f-yfqf.csv?"
+accrimefn <- "cdata/acCrime.csv"
+acc <- pullCrime(accrimeurl, accrimefn, "datetime")
 
-# Oakland crime API
-# https://data.acgov.org/resource/js8f-yfqf.csv?$limit=50000&$where=DateTime between '2016-01-01' and '2016-03-31'
+# Oaklang crime API
+oakcrimeurl <- "https://data.oaklandnet.com/resource/3xav-7geq.csv?"
+oak <- pullCrime(oakcrimeurl, oakcrimefn, "datetime")
+oakcrimefn <- "cdata/oakCrime.csv"
+
+# Berkeley crime API
+berkcrimeurl <- "https://data.cityofberkeley.info/resource/s24d-wsnp.csv?"
+berkcrimefn <- "cdata/berkCrime.csv"
+berk <- pullCrime(berkcrimeurl, berkcrimefn, "eventdt")
+
+# San Mateo, Daly City, etc crime
+# NOPE!
+
+crimDescGrepPattern <- "kidnap|weapons|violent|firearm|robbery|assault|homicide|stolen vehicle|vehicle theft"
+# accCrimeLevels <- levels(acc$crimedescription)[grep(crimDescGrepPattern, levels(acc$crimedescription), ignore.case = T)]
+# sfcCrimeLevels <- levels(sfc$descript)[grep(crimDescGrepPattern, levels(sfc$descript), ignore.case = T)]
+#oakCrimeLevels <- levels(sfc$descript)[grep(crimDescGrepPattern, levels(sfc$descript), ignore.case = T)]
+
+getRelevantIndexes <- function(...) {
+  v <- list(...)
+  # dput(list('v', length(v), class(v)))
+  unlist(lapply(v, function(x) {
+    grep(crimDescGrepPattern, x, ignore.case = T)
+  }))
+}
+
+# accImpCrimes <- acc[acc$crimedescription %in% accCrimeLevels,]
+# sfcImpCrimes <- sfc[sfc$descript %in% sfcCrimeLevels,]
+
+print("filtering crimes")
+
+# sfcImpCrimes <- sfc[getRelevantIndexes(sfc$descript, sfc$category),]
+# accImpCrimes <- acc[getRelevantIndexes(acc$crimedescription),]
+# oakImpCrimes <- oak[getRelevantIndexes(oak$crimetype, oak$description),]
+# berkImpCrimes <- berk[getRelevantIndexes(berk$cvlegend, berk$offense),]
+
+sfcImpCrimes <- sfc[getRelevantIndexes(sfc$descript),]
+accImpCrimes <- acc[getRelevantIndexes(acc$crimedescription),]
+oakImpCrimes <- oak[getRelevantIndexes(oak$description),]
+berkImpCrimes <- berk[getRelevantIndexes(berk$offense),]
+
