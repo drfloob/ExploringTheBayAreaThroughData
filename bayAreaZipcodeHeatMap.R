@@ -3,8 +3,9 @@
 library(gdata)
 library(jsonlite)
 library(RCurl)
-library(zipcode)
 library(tidyr)
+data("zipcode")
+
 
 # Parse zillow data by zip code
 fn <- "zillowData.byZip.dump"
@@ -165,6 +166,34 @@ accImpCrimes <- acc[getRelevantIndexes(acc$crimedescription),]
 oakImpCrimes <- oak[getRelevantIndexes(oak$description),]
 berkImpCrimes <- berk[getRelevantIndexes(berk$offense),]
 
+
+
+
 # data.table for zipcodes, role="nearest"
 # turn "POINT( x y )" into latitude and longitude values
 # convert lat/lng to zipcodes through data.table(data(zipcode), key=c("latitude", "longitude"))
+
+
+getLatLon <- function(ds, var) {
+  re <- "([-\\.[:alnum:]]+)\\s([-\\.[:alnum:]]+)"
+  ds %>% extract_(var, c("longitude", "latitude"), regex=re, remove = FALSE, convert = TRUE)
+}
+
+sfcImpLL <- getLatLon(sfcImpCrimes, "location")
+accImpLL <- getLatLon(accImpCrimes, "location_1")
+oakImpLL <- getLatLon(oakImpCrimes, "location_1")
+berkImpLL <- getLatLon(berkImpCrimes, "block_location")
+
+zc <- data.table(zipcode, key=c("latitude", "longitude"))
+sfcdt <- data.table(sfcImpLL, key=c("latitude", "longitude"))
+
+lstSqrz <- function(u,v) {
+  vec <- with(zc, (u-longitude)^2 + (v-latitude)^2)
+  zc[which.min(vec),]$zip
+}
+transform(sfcdt, zip=apply(sfcdt, 1, function(u) {
+  # dput(list('u', class(u), names(u), u[['longitude']]))
+  lstSqrz(as.numeric(u[['longitude']]), as.numeric(u[['latitude']]))
+  }))
+
+
