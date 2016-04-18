@@ -1,3 +1,7 @@
 **/*.dump
 **/*.csv
 credentials.R
+.Rhistory
+*.html
+*_cache/
+*_files/
