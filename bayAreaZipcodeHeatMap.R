@@ -14,6 +14,11 @@ data("zipcode")
 credFile <- "credentials.R"
 source(credFile)
 
+
+# -------------------------------------------------------------------------------
+#    Gather Zillow Data
+
+
 # Parse zillow data by zip code
 fn <- "zillowData.byZip.dump"
 if(!file.exists(fn)) {
@@ -31,7 +36,10 @@ if(!file.exists(fn)) {
     source(fn)
 }
 
-# pull google data
+
+# -------------------------------------------------------------------------------
+#    Pull Google Maps Data by Zipcode
+
 gfn <- "gData.dump"
 if (!file.exists(gfn)) {
     if (!file.exists(credFile)) {
@@ -420,3 +428,9 @@ m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
 m <- addProviderTiles(m, "CartoDB.Positron")
 m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30))
 print(m)
+
+
+# CA zipcode shapes: generated using instructions from
+# https://github.com/jgoodall/us-maps
+# 
+# Map generated using tutorial: https://rstudio.github.io/leaflet/json.html
