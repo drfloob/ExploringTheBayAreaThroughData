@@ -8,6 +8,7 @@ library(data.table)
 library(stringr)
 library(zipcode)
 library(leaflet)
+library(httr)
 
 data("zipcode")
 
@@ -109,12 +110,14 @@ if (!file.exists(routefn)) {
 # -------------------------------------------------------------------------------
 #    Gather crime data
 
-commonLimits <- "$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'"
+commonLimits <- paste0("$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'&$$app_token=", appToken)
 pullCrime <- function(url, fn, dt) {
     l <- sprintf(commonLimits, dt)
-    # print(paste0(url, l))
+    url <- paste0(url, l)
+    print(url)
     if (!file.exists(fn)) {
-        download.file(paste0(url, l), fn, method = "curl", mode="wb")
+        x <- httr::GET(url=URLencode(url))
+        write.csv(content(x, col_names=TRUE, col_types=NULL), file = fn)
     }
     read.csv(fn, colClasses = "character")
 }
@@ -171,10 +174,15 @@ smcdateformat <- "%m/%d/%Y %H:%M:%S %p"
 smcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow")
 smc <- pullCrimeGraphics(smccrimeurl, smccrimefn, smccrimepost, "DateOpened", smcdateformat, smcasis)
 
+# Redwood City
 rwccrimeurl <- "https://moto.data.socrata.com/resource/9wfx-9qes.csv?"
 rwccrimefn <- "cdata/rwcCrime.csv"
 rwc <- pullCrime(rwccrimeurl, rwccrimefn, "incident_datetime")
 
+# Menlo Park Police Dept.
+mpcrimeurl <- "https://moto.data.socrata.com/resource/ex86-feqy.csv?"
+mpcrimefn <- "cdata/mpCrime.csv"
+mp <- pullCrime(mpcrimeurl, mpcrimefn, "incident_datetime")
 
 
 # -------------------------------------------------------------------------------
@@ -189,6 +197,7 @@ berk <- mutate(berk, description=as.character(offense))
 dc <- mutate(dc, description=as.character(Description))
 smc <- mutate(smc, description=as.character(Description))
 rwc <- mutate(rwc, description=as.character(incident_description))
+mp <- mutate(mp, description=as.character(incident_description))
 
 
 
@@ -207,6 +216,8 @@ smc <- rename(smc, longitude=Longitude, latitude=Latitude)
 # location is also populated. Well done, guys!
 # rwc <- getLatLon(rwc, "location")
 
+# same with menlo park?
+
 
 
 dateformat.socrata <- "%Y-%m-%dT%H:%M:%S"
@@ -220,6 +231,8 @@ berk$date <- as.POSIXct(strptime(berk$eventdt, dateformat.socrata))
 dc$date <- as.POSIXct(strptime(dc$DateOpened, dateformat.crimegraphics))
 smc$date <- as.POSIXct(strptime(smc$DateOpened, dateformat.crimegraphics))
 rwc$date <- as.POSIXct(strptime(rwc$incident_datetime, dateformat.socrata))
+mp$date <- as.POSIXct(strptime(mp$incident_datetime, dateformat.socrata))
+
 
 print("annotating datasets with origin key")
 sfc$origin <- "sfc"
@@ -229,13 +242,15 @@ berk$origin <- "berk"
 dc$origin <- "dc"
 smc$origin <- "smc"
 rwc$origin <- "rwc"
+mp$origin <- "mp"
 
 
 print("merging data")
 merged <- Reduce(function(x,y) {
     rbind(select(x, origin, description, date, latitude, longitude),
           select(y, origin, description, date, latitude, longitude))
-}, list(sfc,acc,oak,berk,dc,smc, rwc)) %>% mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
+}, list(sfc,acc,oak,berk,dc,smc,rwc,mp)) %>% mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
+
 
 print("removing NA lat/lng")
 # TODO: lookup lat/lng from street names, most are available
