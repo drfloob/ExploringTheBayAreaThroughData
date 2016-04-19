@@ -112,10 +112,11 @@ if (!file.exists(routefn)) {
 commonLimits <- "$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'"
 pullCrime <- function(url, fn, dt) {
     l <- sprintf(commonLimits, dt)
+    # print(paste0(url, l))
     if (!file.exists(fn)) {
-        download.file(paste(sep="", url, l), fn)
+        download.file(paste0(url, l), fn, method = "curl", mode="wb")
     }
-    read.csv(fn, stringsAsFactors = TRUE)
+    read.csv(fn, colClasses = "character")
 }
 
 pullCrimeGraphics <- function(url, fn, postData, dt, dateFormat, as.is=NULL) {
@@ -170,6 +171,9 @@ smcdateformat <- "%m/%d/%Y %H:%M:%S %p"
 smcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow")
 smc <- pullCrimeGraphics(smccrimeurl, smccrimefn, smccrimepost, "DateOpened", smcdateformat, smcasis)
 
+rwccrimeurl <- "https://moto.data.socrata.com/resource/9wfx-9qes.csv?"
+rwccrimefn <- "cdata/rwcCrime.csv"
+rwc <- pullCrime(rwccrimeurl, rwccrimefn, "incident_datetime")
 
 
 
@@ -184,6 +188,7 @@ oak <- mutate(oak, description=as.character(description))
 berk <- mutate(berk, description=as.character(offense))
 dc <- mutate(dc, description=as.character(Description))
 smc <- mutate(smc, description=as.character(Description))
+rwc <- mutate(rwc, description=as.character(incident_description))
 
 
 
@@ -198,17 +203,23 @@ oak <- getLatLon(oak, "location_1")
 berk <- getLatLon(berk, "block_location")
 dc <- rename(dc, longitude=Longitude, latitude=Latitude)
 smc <- rename(smc, longitude=Longitude, latitude=Latitude)
+# rwc already has latitude & longitude values that are populated whenever
+# location is also populated. Well done, guys!
+# rwc <- getLatLon(rwc, "location")
 
 
+
+dateformat.socrata <- "%Y-%m-%dT%H:%M:%S"
+dateformat.crimegraphics <- "%m/%d/%Y %H:%M:%S %p"
 
 print("unifying dates")
-sfc$date <- as.POSIXct(strptime(sfc$date, "%Y-%m-%dT%H:%M:%S"))
-acc$date <- as.POSIXct(strptime(acc$datetime, "%Y-%m-%dT%H:%M:%S"))
-oak$date <- as.POSIXct(strptime(oak$datetime, "%Y-%m-%dT%H:%M:%S"))
-berk$date <- as.POSIXct(strptime(berk$eventdt, "%Y-%m-%dT%H:%M:%S"))
-dc$date <- as.POSIXct(strptime(dc$DateOpened, "%m/%d/%Y %H:%M:%S %p"))
-smc$date <- as.POSIXct(strptime(smc$DateOpened, "%m/%d/%Y %H:%M:%S %p"))
-
+sfc$date <- as.POSIXct(strptime(sfc$date, dateformat.socrata))
+acc$date <- as.POSIXct(strptime(acc$datetime, dateformat.socrata))
+oak$date <- as.POSIXct(strptime(oak$datetime, dateformat.socrata))
+berk$date <- as.POSIXct(strptime(berk$eventdt, dateformat.socrata))
+dc$date <- as.POSIXct(strptime(dc$DateOpened, dateformat.crimegraphics))
+smc$date <- as.POSIXct(strptime(smc$DateOpened, dateformat.crimegraphics))
+rwc$date <- as.POSIXct(strptime(rwc$incident_datetime, dateformat.socrata))
 
 print("annotating datasets with origin key")
 sfc$origin <- "sfc"
@@ -217,14 +228,14 @@ oak$origin <- "oak"
 berk$origin <- "berk"
 dc$origin <- "dc"
 smc$origin <- "smc"
-
+rwc$origin <- "rwc"
 
 
 print("merging data")
 merged <- Reduce(function(x,y) {
     rbind(select(x, origin, description, date, latitude, longitude),
           select(y, origin, description, date, latitude, longitude))
-}, list(sfc,acc,oak,berk,dc,smc))
+}, list(sfc,acc,oak,berk,dc,smc, rwc)) %>% mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 print("removing NA lat/lng")
 # TODO: lookup lat/lng from street names, most are available
