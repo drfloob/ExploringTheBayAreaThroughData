@@ -1,5 +1,5 @@
 zipDir <- "zipGeo"
-if (!dir.exists(zipDir)) create.dir(zipDir)
+if (!dir.exists(zipDir)) dir.create(zipDir)
 
 zipFile <- file.path(zipDir, "tl_2010_06_zcta510.zip")
 shapeFilename <- "tl_2010_06_zcta510.shp"
