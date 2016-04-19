@@ -1,4 +1,3 @@
-
 library(gdata)
 library(jsonlite)
 library(RCurl)
@@ -12,6 +11,8 @@ library(httr)
 
 data("zipcode")
 
+credFile <- "credentials.R"
+source(credFile)
 
 # Parse zillow data by zip code
 fn <- "zillowData.byZip.dump"
@@ -33,12 +34,10 @@ if(!file.exists(fn)) {
 # pull google data
 gfn <- "gData.dump"
 if (!file.exists(gfn)) {
-    credFile <- "credentials.R"
     if (!file.exists(credFile)) {
         stop("Missing credentials file: credentials.R. See README.md for formatting")
     }
     
-    source(credFile)
     url <- function(zip) {
         root <- "https://maps.googleapis.com/maps/api/directions/json?"
         u <- paste(sep="", 
@@ -143,11 +142,6 @@ sfcrimeurl <- "https://data.sfgov.org/resource/cuks-n6tp.csv?"
 sfcrimefn <- "cdata/sfCrime.csv"
 sfc <- pullCrime(sfcrimeurl, sfcrimefn, "date")
 
-# Alameda County crime API
-accrimeurl <- "https://data.acgov.org/resource/js8f-yfqf.csv?"
-accrimefn <- "cdata/acCrime.csv"
-acc <- pullCrime(accrimeurl, accrimefn, "datetime")
-
 # Oakland crime API
 oakcrimeurl <- "https://data.oaklandnet.com/resource/3xav-7geq.csv?"
 oakcrimefn <- "cdata/oakCrime.csv"
@@ -166,14 +160,6 @@ dcdateformat <- "%m/%d/%Y %H:%M:%S %p"
 dcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow", "Status", "TimeOpened", "DateClosed", "TimeClosed")
 dc <- pullCrimeGraphics(dccrimeurl, dccrimefn, dccrimepost, "DateOpened", dcdateformat, dcasis)
 
-# San Mateo Country Sheriff (not an official API)
-smccrimeurl <- "http://smso.crimegraphics.com/2013/MapData.asmx/GetMapPoints"
-smccrimefn <- "cdata/smcCrime.csv"
-smccrimepost <- '{"AGCODE":"SMSO","StartDate":"01/01/2016","EndDate":"03/31/2016","MapType":"C","GroupTypes":"HOMICIDE,MANSLAU,ROBBERY,ASSAULT,BURGLARY,STOLVEH,ATTBURG","CirLat":0,"CirLon":0,"CirRad":0}'
-smcdateformat <- "%m/%d/%Y %H:%M:%S %p"
-smcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow")
-smc <- pullCrimeGraphics(smccrimeurl, smccrimefn, smccrimepost, "DateOpened", smcdateformat, smcasis)
-
 # Redwood City
 rwccrimeurl <- "https://moto.data.socrata.com/resource/9wfx-9qes.csv?"
 rwccrimefn <- "cdata/rwcCrime.csv"
@@ -185,20 +171,51 @@ mpcrimefn <- "cdata/mpCrime.csv"
 mp <- pullCrime(mpcrimeurl, mpcrimefn, "incident_datetime")
 
 
+# Piedmont
+piedcrimeurl <- "https://moto.data.socrata.com/resource/p52h-m2j9.csv?"
+piedcrimefn <- "cdata/piedmontCrime.csv"
+pied <- pullCrime(piedcrimeurl, piedcrimefn, "incident_datetime")
+
+
+# Emeryville
+emcrimeurl <- "https://moto.data.socrata.com/resource/icdc-r3z6.csv?"
+emcrimefn <- "cdata/emCrime.csv"
+em <- pullCrime(emcrimeurl, emcrimefn, "incident_datetime")
+
+# Counties - difficult to integrate with city police data for this project
+
+# Alameda County crime API
+#accrimeurl <- "https://data.acgov.org/resource/js8f-yfqf.csv?"
+#accrimefn <- "cdata/acCrime.csv"
+#acc <- pullCrime(accrimeurl, accrimefn, "datetime")
+
+# San Mateo Country Sheriff (not an official API)
+#smccrimeurl <- "http://smso.crimegraphics.com/2013/MapData.asmx/GetMapPoints"
+#smccrimefn <- "cdata/smcCrime.csv"
+#smccrimepost <- '{"AGCODE":"SMSO","StartDate":"01/01/2016","EndDate":"03/31/2016","MapType":"C","GroupTypes":"HOMICIDE,MANSLAU,ROBBERY,ASSAULT,BURGLARY,STOLVEH,ATTBURG","CirLat":0,"CirLon":0,"CirRad":0}'
+#smcdateformat <- "%m/%d/%Y %H:%M:%S %p"
+#smcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow")
+#smc <- pullCrimeGraphics(smccrimeurl, smccrimefn, smccrimepost, "DateOpened", smcdateformat, smcasis)
+
+
+
 # -------------------------------------------------------------------------------
 #    Tidying data
    
 
 print("unifying descriptions")
 sfc <- mutate(sfc, description=as.character(descript))
-acc <- mutate(acc, description=as.character(crimedescription))
 oak <- mutate(oak, description=as.character(description))
 berk <- mutate(berk, description=as.character(offense))
 dc <- mutate(dc, description=as.character(Description))
-smc <- mutate(smc, description=as.character(Description))
 rwc <- mutate(rwc, description=as.character(incident_description))
 mp <- mutate(mp, description=as.character(incident_description))
+pied <- mutate(pied, description=as.character(incident_description))
+em <- mutate(em, description=as.character(incident_description))
 
+# counties
+#acc <- mutate(acc, description=as.character(crimedescription))
+#smc <- mutate(smc, description=as.character(Description))
 
 
 print("parsting latitude / longitude")
@@ -207,16 +224,18 @@ getLatLon <- function(ds, var) {
     ds %>% extract_(var, c("longitude", "latitude"), regex=re, remove = FALSE, convert = TRUE)
 }
 sfc <- getLatLon(sfc, "location")
-acc <- getLatLon(acc, "location_1")
 oak <- getLatLon(oak, "location_1")
 berk <- getLatLon(berk, "block_location")
 dc <- rename(dc, longitude=Longitude, latitude=Latitude)
-smc <- rename(smc, longitude=Longitude, latitude=Latitude)
-# rwc already has latitude & longitude values that are populated whenever
-# location is also populated. Well done, guys!
-# rwc <- getLatLon(rwc, "location")
+# rwc done
+# mp done
+# pied done
+# em done
 
-# same with menlo park?
+
+# counties
+#acc <- getLatLon(acc, "location_1")
+#smc <- rename(smc, longitude=Longitude, latitude=Latitude)
 
 
 
@@ -225,31 +244,41 @@ dateformat.crimegraphics <- "%m/%d/%Y %H:%M:%S %p"
 
 print("unifying dates")
 sfc$date <- as.POSIXct(strptime(sfc$date, dateformat.socrata))
-acc$date <- as.POSIXct(strptime(acc$datetime, dateformat.socrata))
 oak$date <- as.POSIXct(strptime(oak$datetime, dateformat.socrata))
 berk$date <- as.POSIXct(strptime(berk$eventdt, dateformat.socrata))
 dc$date <- as.POSIXct(strptime(dc$DateOpened, dateformat.crimegraphics))
-smc$date <- as.POSIXct(strptime(smc$DateOpened, dateformat.crimegraphics))
 rwc$date <- as.POSIXct(strptime(rwc$incident_datetime, dateformat.socrata))
 mp$date <- as.POSIXct(strptime(mp$incident_datetime, dateformat.socrata))
+pied$date <- as.POSIXct(strptime(pied$incident_datetime, dateformat.socrata))
+em$date <- as.POSIXct(strptime(em$incident_datetime, dateformat.socrata))
+
+
+
+# counties
+#acc$date <- as.POSIXct(strptime(acc$datetime, dateformat.socrata))
+#smc$date <- as.POSIXct(strptime(smc$DateOpened, dateformat.crimegraphics))
 
 
 print("annotating datasets with origin key")
 sfc$origin <- "sfc"
-acc$origin <- "acc"
 oak$origin <- "oak"
 berk$origin <- "berk"
 dc$origin <- "dc"
-smc$origin <- "smc"
 rwc$origin <- "rwc"
 mp$origin <- "mp"
+pied$origin <- "pied"
+em$origin <- "em"
 
+# counties
+#acc$origin <- "acc"
+#smc$origin <- "smc"
 
 print("merging data")
 merged <- Reduce(function(x,y) {
     rbind(select(x, origin, description, date, latitude, longitude),
           select(y, origin, description, date, latitude, longitude))
-}, list(sfc,acc,oak,berk,dc,smc,rwc,mp)) %>% mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
+}, list(sfc,oak,berk,dc,rwc,mp,pied,em)) %>% 
+    mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 
 print("removing NA lat/lng")
