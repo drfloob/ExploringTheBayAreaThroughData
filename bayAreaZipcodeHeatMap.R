@@ -7,6 +7,7 @@ library(dplyr)
 library(data.table)
 library(stringr)
 library(zipcode)
+library(leaflet)
 
 data("zipcode")
 
@@ -225,6 +226,9 @@ merged <- Reduce(function(x,y) {
           select(y, origin, description, date, latitude, longitude))
 }, list(sfc,acc,oak,berk,dc,smc))
 
+print("removing NA lat/lng")
+# TODO: lookup lat/lng from street names, most are available
+merged <- filter(merged, !is.na(latitude) & !is.na(longitude))
 
 
 print("filtering down to pertinent crime types")
@@ -232,56 +236,24 @@ crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|
 merged <- rowwise(merged) %>% filter(grepl(crimeDescGrepPattern, description, ignore.case=TRUE))
     
     
-filterToPertinentCrimes <- function(col) {
-    grep(crimDescGrepPattern, col, ignore.case = T)
-}
-sfcImpCrimes <- sfc[filterToPertinentCrimes(sfc$d),]
-accImpCrimes <- acc[filterToPertinentCrimes(acc$d),]
-oakImpCrimes <- oak[filterToPertinentCrimes(oak$d),]
-berkImpCrimes <- berk[filterToPertinentCrimes(berk$d),]
-dcImpCrimes <- dc[filterToPertinentCrimes(dc$d),]
-smcImpCrimes <- smc[filterToPertinentCrimes(smc$d),]
-
-
 
 print("associating zip codes with lat/lng")
-
 zc <- data.table(zipcode, key=c("latitude", "longitude"))
-sfcdt <- data.table(sfcImpLL, key=c("latitude", "longitude"))
-accdt <- data.table(accImpLL, key=c("latitude", "longitude"))
-oakcdt <- data.table(oakImpLL, key=c("latitude", "longitude"))
-berkcdt <- data.table(berkImpLL, key=c("latitude", "longitude"))
-dccdt <- data.table(dcImpLL, key=c("latitude", "longitude"))
-smccdt <- data.table(smcImpLL, key=c("latitude", "longitude"))
+merged <- data.table(merged, key=c("latitude", "longitude"))
 
 getZipViaLstSqrz <- function(lng,lat) {
     vec <- with(zc, (lng-longitude)^2 + (lat-latitude)^2)
     zc[which.min(vec),]$zip
 }
-zipCrime <- function(dt) {
-    dt %>% rowwise() %>% mutate(zip=getZipViaLstSqrz(longitude, latitude))
-}
-sfCrimeZipped <- zipCrime(sfcdt)
-acCrimeZipped <- zipCrime(accdt)
-oakCrimeZipped <- zipCrime(oakcdt)
-berkCrimeZipped <- zipCrime(berkcdt)
-dcCrimeZipped <- zipCrime(dccdt)
-smcCrimeZipped <- zipCrime(smccdt)
+
+merged <- merged %>% rowwise() %>% mutate(zip=getZipViaLstSqrz(longitude, latitude))
+
 
 
 
 print("mapping crimes")
 
-latlngAll <- Reduce(
-    function(x,y) {
-        rbind(select(x, latitude, longitude, zip),select(y, latitude, longitude, zip))
-    }, 
-    list(sfCrimeZipped, acCrimeZipped, oakCrimeZipped, berkCrimeZipped, dcCrimeZipped, smcCrimeZipped)
-)
-
-latlngAll <- filter(latlngAll, !is.na(latitude) & !is.na(longitude))
-
-m <- leaflet(data=latlngAll)
+m <- leaflet(data=merged)
 m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
 m <- addProviderTiles(m, "CartoDB.Positron")
 m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30))
