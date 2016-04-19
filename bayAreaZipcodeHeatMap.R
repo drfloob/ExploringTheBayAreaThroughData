@@ -3,8 +3,10 @@ library(gdata)
 library(jsonlite)
 library(RCurl)
 library(tidyr)
+library(dplyr)
 library(data.table)
 library(stringr)
+library(zipcode)
 
 data("zipcode")
 
@@ -56,8 +58,8 @@ if (!file.exists(gfn)) {
     }
     
     dump(c('gdata'), gfn)
-} else {
 }
+
 source(gfn)
 
 
@@ -103,17 +105,32 @@ if (!file.exists(routefn)) {
 }
 
 
-
-final <- cbind(distances, midCost=sfsimp[sfsimp$RegionName == distances$zip, "X2016.02"])
+# -------------------------------------------------------------------------------
+#    Gather crime data
 
 commonLimits <- "$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'"
-
 pullCrime <- function(url, fn, dt) {
     l <- sprintf(commonLimits, dt)
     if (!file.exists(fn)) {
         download.file(paste(sep="", url, l), fn)
     }
-    read.csv(fn, as.is = c("location_1", "location", "block_location"))
+    read.csv(fn, stringsAsFactors = TRUE)
+}
+
+pullCrimeGraphics <- function(url, fn, postData, dt, dateFormat, as.is=NULL) {
+    if (!file.exists(fn)) {
+        resp <- POST(url, body = postData, encode = "json", add_headers("Content-Type"="application/json", Accept="application/json", "Content-Length"=str_length(postData)))
+        df <- do.call(rbind.data.frame, c(content(resp)$d, stringsAsFactors=FALSE))
+        write.csv(df, file=fn)
+    }
+    df <- read.csv(fn, as.is=as.is)
+
+    # CrimeGraphics nests multiple crimes in the same location into a single
+    # observation. This code undoes that.
+    df <- unnest(df, Description = lapply( 
+                     strsplit(Description, split="<big>", fixed = TRUE),
+                     function(x){x[-1]}))
+    df
 }
 
 # SF crime API
@@ -136,66 +153,106 @@ berkcrimeurl <- "https://data.cityofberkeley.info/resource/s24d-wsnp.csv?"
 berkcrimefn <- "cdata/berkCrime.csv"
 berk <- pullCrime(berkcrimeurl, berkcrimefn, "eventdt")
 
-# San Mateo, Daly City, etc crime
-# NOPE!
+# Daly City crime (not an official API)
+dccrimeurl <- "http://dcpd.crimegraphics.com/2013/MapData.asmx/GetMapPoints"
+dccrimefn <- "cdata/dcCrime.csv"
+dccrimepost <- '{"AGCODE":"DCPD","StartDate":"01/01/2016","EndDate":"03/31/2016","MapType":"I","GroupTypes":"851,459,240,211","CirLat":0,"CirLon":0,"CirRad":0}'
+dcdateformat <- "%m/%d/%Y %H:%M:%S %p"
+dcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow", "Status", "TimeOpened", "DateClosed", "TimeClosed")
+dc <- pullCrimeGraphics(dccrimeurl, dccrimefn, dccrimepost, "DateOpened", dcdateformat, dcasis)
 
-
-# Unified descriptions
-sfc['d'] <- sfc$descript
-acc['d'] <- acc$crimedescription
-oak['d'] <- oak$description
-berk['d'] <- berk$offense
-
-
-crimDescGrepPattern <- "kidnap|weapons|violent|firearm|robbery|assault|homicide|stolen vehicle|vehicle theft"
-## Multi-column search version
-# getRelevantIndexes <- function(...) {
-#   v <- list(...)
-#   # dput(list('v', length(v), class(v)))
-#   unlist(lapply(v, function(x) {
-#     grep(crimDescGrepPattern, x, ignore.case = T)
-#   }))
-# }
-getRelevantIndexes <- function(col) {
-    grep(crimDescGrepPattern, col, ignore.case = T)
-}
+# San Mateo Country Sheriff (not an official API)
+smccrimeurl <- "http://smso.crimegraphics.com/2013/MapData.asmx/GetMapPoints"
+smccrimefn <- "cdata/smcCrime.csv"
+smccrimepost <- '{"AGCODE":"SMSO","StartDate":"01/01/2016","EndDate":"03/31/2016","MapType":"C","GroupTypes":"HOMICIDE,MANSLAU,ROBBERY,ASSAULT,BURGLARY,STOLVEH,ATTBURG","CirLat":0,"CirLon":0,"CirRad":0}'
+smcdateformat <- "%m/%d/%Y %H:%M:%S %p"
+smcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow")
+smc <- pullCrimeGraphics(smccrimeurl, smccrimefn, smccrimepost, "DateOpened", smcdateformat, smcasis)
 
 
 
 
+# -------------------------------------------------------------------------------
+#    Tidying data
+   
 
-print("filtering crimes")
-
-sfcImpCrimes <- sfc[getRelevantIndexes(sfc$d),]
-accImpCrimes <- acc[getRelevantIndexes(acc$d),]
-oakImpCrimes <- oak[getRelevantIndexes(oak$d),]
-berkImpCrimes <- berk[getRelevantIndexes(berk$d),]
-
-
-
-
-# data.table for zipcodes, role="nearest"
-# turn "POINT( x y )" into latitude and longitude values
-# convert lat/lng to zipcodes through data.table(data(zipcode), key=c("latitude", "longitude"))
+print("unifying descriptions")
+sfc <- mutate(sfc, description=as.character(descript))
+acc <- mutate(acc, description=as.character(crimedescription))
+oak <- mutate(oak, description=as.character(description))
+berk <- mutate(berk, description=as.character(offense))
+dc <- mutate(dc, description=as.character(Description))
+smc <- mutate(smc, description=as.character(Description))
 
 
+
+print("parsting latitude / longitude")
 getLatLon <- function(ds, var) {
     re <- "([-\\.[:alnum:]]+)\\s([-\\.[:alnum:]]+)"
     ds %>% extract_(var, c("longitude", "latitude"), regex=re, remove = FALSE, convert = TRUE)
 }
+sfc <- getLatLon(sfc, "location")
+acc <- getLatLon(acc, "location_1")
+oak <- getLatLon(oak, "location_1")
+berk <- getLatLon(berk, "block_location")
+dc <- rename(dc, longitude=Longitude, latitude=Latitude)
+smc <- rename(smc, longitude=Longitude, latitude=Latitude)
 
-print("parsting latitude / longitude")
 
-sfcImpLL <- getLatLon(sfcImpCrimes, "location")
-accImpLL <- getLatLon(accImpCrimes, "location_1")
-oakImpLL <- getLatLon(oakImpCrimes, "location_1")
-berkImpLL <- getLatLon(berkImpCrimes, "block_location")
+
+print("unifying dates")
+sfc$date <- as.POSIXct(strptime(sfc$date, "%Y-%m-%dT%H:%M:%S"))
+acc$date <- as.POSIXct(strptime(acc$datetime, "%Y-%m-%dT%H:%M:%S"))
+oak$date <- as.POSIXct(strptime(oak$datetime, "%Y-%m-%dT%H:%M:%S"))
+berk$date <- as.POSIXct(strptime(berk$eventdt, "%Y-%m-%dT%H:%M:%S"))
+dc$date <- as.POSIXct(strptime(dc$DateOpened, "%m/%d/%Y %H:%M:%S %p"))
+smc$date <- as.POSIXct(strptime(smc$DateOpened, "%m/%d/%Y %H:%M:%S %p"))
+
+
+print("annotating datasets with origin key")
+sfc$origin <- "sfc"
+acc$origin <- "acc"
+oak$origin <- "oak"
+berk$origin <- "berk"
+dc$origin <- "dc"
+smc$origin <- "smc"
+
+
+
+print("merging data")
+merged <- Reduce(function(x,y) {
+    rbind(select(x, origin, description, date, latitude, longitude),
+          select(y, origin, description, date, latitude, longitude))
+}, list(sfc,acc,oak,berk,dc,smc))
+
+
+
+print("filtering down to pertinent crime types")
+crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|stolen vehicle|knife|cut|vehicle theft"
+merged <- rowwise(merged) %>% filter(grepl(crimeDescGrepPattern, description, ignore.case=TRUE))
+    
+    
+filterToPertinentCrimes <- function(col) {
+    grep(crimDescGrepPattern, col, ignore.case = T)
+}
+sfcImpCrimes <- sfc[filterToPertinentCrimes(sfc$d),]
+accImpCrimes <- acc[filterToPertinentCrimes(acc$d),]
+oakImpCrimes <- oak[filterToPertinentCrimes(oak$d),]
+berkImpCrimes <- berk[filterToPertinentCrimes(berk$d),]
+dcImpCrimes <- dc[filterToPertinentCrimes(dc$d),]
+smcImpCrimes <- smc[filterToPertinentCrimes(smc$d),]
+
+
+
+print("associating zip codes with lat/lng")
 
 zc <- data.table(zipcode, key=c("latitude", "longitude"))
 sfcdt <- data.table(sfcImpLL, key=c("latitude", "longitude"))
 accdt <- data.table(accImpLL, key=c("latitude", "longitude"))
 oakcdt <- data.table(oakImpLL, key=c("latitude", "longitude"))
 berkcdt <- data.table(berkImpLL, key=c("latitude", "longitude"))
+dccdt <- data.table(dcImpLL, key=c("latitude", "longitude"))
+smccdt <- data.table(smcImpLL, key=c("latitude", "longitude"))
 
 getZipViaLstSqrz <- function(lng,lat) {
     vec <- with(zc, (lng-longitude)^2 + (lat-latitude)^2)
@@ -204,19 +261,28 @@ getZipViaLstSqrz <- function(lng,lat) {
 zipCrime <- function(dt) {
     dt %>% rowwise() %>% mutate(zip=getZipViaLstSqrz(longitude, latitude))
 }
-
-
-print("finding zip codes")
-
 sfCrimeZipped <- zipCrime(sfcdt)
 acCrimeZipped <- zipCrime(accdt)
 oakCrimeZipped <- zipCrime(oakcdt)
 berkCrimeZipped <- zipCrime(berkcdt)
+dcCrimeZipped <- zipCrime(dccdt)
+smcCrimeZipped <- zipCrime(smccdt)
 
-print("summing crimes by zip")
 
-sfCrimeCount <- sfCrimeZipped[,list(count=sum(!is.na(d))), by=zip]
-acCrimeCount <- acCrimeZipped[,list(count=sum(!is.na(d))), by=zip]
-oakCrimeCount <- oakCrimeZipped[,list(count=sum(!is.na(d))), by=zip]
-berkCrimeCount <- berkCrimeZipped[,list(count=sum(!is.na(d))), by=zip]
 
+print("mapping crimes")
+
+latlngAll <- Reduce(
+    function(x,y) {
+        rbind(select(x, latitude, longitude, zip),select(y, latitude, longitude, zip))
+    }, 
+    list(sfCrimeZipped, acCrimeZipped, oakCrimeZipped, berkCrimeZipped, dcCrimeZipped, smcCrimeZipped)
+)
+
+latlngAll <- filter(latlngAll, !is.na(latitude) & !is.na(longitude))
+
+m <- leaflet(data=latlngAll)
+m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
+m <- addProviderTiles(m, "CartoDB.Positron")
+m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30))
+print(m)
