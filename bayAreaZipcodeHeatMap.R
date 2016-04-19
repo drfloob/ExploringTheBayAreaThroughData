@@ -170,18 +170,15 @@ mpcrimeurl <- "https://moto.data.socrata.com/resource/ex86-feqy.csv?"
 mpcrimefn <- "cdata/mpCrime.csv"
 mp <- pullCrime(mpcrimeurl, mpcrimefn, "incident_datetime")
 
-
 # Piedmont
 piedcrimeurl <- "https://moto.data.socrata.com/resource/p52h-m2j9.csv?"
 piedcrimefn <- "cdata/piedmontCrime.csv"
 pied <- pullCrime(piedcrimeurl, piedcrimefn, "incident_datetime")
 
-
 # Emeryville
 emcrimeurl <- "https://moto.data.socrata.com/resource/icdc-r3z6.csv?"
 emcrimefn <- "cdata/emCrime.csv"
 em <- pullCrime(emcrimeurl, emcrimefn, "incident_datetime")
-
 
 # San Leandro
 slcrimeurl <- "https://moto.data.socrata.com/resource/6nbc-apvm.csv?"
@@ -213,8 +210,30 @@ mtvcrimeurl <- "https://moto.data.socrata.com/resource/k56q-mt3c.csv?"
 mtvcrimefn <- "cdata/mtvCrime.csv"
 mtv <- pullCrime(mtvcrimeurl, mtvcrimefn, "incident_datetime")
 
+# Union City
+uccrimeurl <- "https://moto.data.socrata.com/resource/xqci-zc8x.csv?"
+uccrimefn <- "cdata/ucCrime.csv"
+uc <- pullCrime(uccrimeurl, uccrimefn, "incident_datetime")
 
+# Fremont
+frcrimeurl <- "https://moto.data.socrata.com/resource/nnzs-rxi5.csv?"
+frcrimefn <- "cdata/frCrime.csv"
+fr <- pullCrime(frcrimeurl, frcrimefn, "incident_datetime")
 
+# Dublin
+dublincrimeurl <- "https://moto.data.socrata.com/resource/ifng-r995.csv?"
+dublincrimefn <- "cdata/dublinCrime.csv"
+dublin <- pullCrime(dublincrimeurl, dublincrimefn, "incident_datetime")
+
+# Pleasant Hill
+phcrimeurl <- "https://moto.data.socrata.com/resource/i8a5-7vrs.csv?"
+phcrimefn <- "cdata/phCrime.csv"
+ph <- pullCrime(phcrimeurl, phcrimefn, "incident_datetime")
+
+# Martinez
+martcrimeurl <- "https://moto.data.socrata.com/resource/vpaa-2jww.csv?"
+martcrimefn <- "cdata/martinezCrime.csv"
+mart <- pullCrime(martcrimeurl, martcrimefn, "incident_datetime")
 
 
 
@@ -254,6 +273,11 @@ ec <- mutate(ec, description=as.character(incident_description))
 lf <- mutate(lf, description=as.character(incident_description))
 campbell <- mutate(campbell, description=as.character(incident_description))
 mtv <- mutate(mtv, description=as.character(incident_description))
+uc <- mutate(uc, description=as.character(incident_description))
+fr <- mutate(fr, description=as.character(incident_description))
+dublin <- mutate(dublin, description=as.character(incident_description))
+ph <- mutate(ph, description=as.character(incident_description))
+mart <- mutate(mart, description=as.character(incident_description))
 
 
 
@@ -282,6 +306,12 @@ dc <- rename(dc, longitude=Longitude, latitude=Latitude)
 # lf done
 # capmbell done
 # mtv done
+# uc done
+# fr done
+# dublin done
+# ph done
+# mart done
+
 
 # counties
 #acc <- getLatLon(acc, "location_1")
@@ -307,6 +337,11 @@ ec$date <- as.POSIXct(strptime(ec$incident_datetime, dateformat.socrata))
 lf$date <- as.POSIXct(strptime(lf$incident_datetime, dateformat.socrata))
 campbell$date <- as.POSIXct(strptime(campbell$incident_datetime, dateformat.socrata))
 mtv$date <- as.POSIXct(strptime(mtv$incident_datetime, dateformat.socrata))
+uc$date <- as.POSIXct(strptime(uc$incident_datetime, dateformat.socrata))
+fr$date <- as.POSIXct(strptime(fr$incident_datetime, dateformat.socrata))
+dublin$date <- as.POSIXct(strptime(dublin$incident_datetime, dateformat.socrata))
+ph$date <- as.POSIXct(strptime(ph$incident_datetime, dateformat.socrata))
+mart$date <- as.POSIXct(strptime(mart$incident_datetime, dateformat.socrata))
 
 
 
@@ -330,6 +365,11 @@ ec$origin <- "ec"
 lf$origin <- "lf"
 campbell$origin <- "campbell"
 mtv$origin <- "mtv"
+uc$origin <- "uc"
+fr$origin <- "fr"
+dublin$origin <- "dublin"
+ph$origin <- "ph"
+mart$origin <- "mart"
 
 
 # counties
@@ -344,7 +384,7 @@ print("merging data")
 merged <- Reduce(function(x,y) {
     rbind(select(x, origin, description, date, latitude, longitude),
           select(y, origin, description, date, latitude, longitude))
-}, list(sfc,oak,berk,dc,rwc,mp,pied,em,sl,albany,ec,lf,campbell,mtv)) %>% 
+}, list(sfc,oak,berk,dc,rwc,mp,pied,em,sl,albany,ec,lf,campbell,mtv,uc,fr,dublin,ph,mart)) %>% 
     mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 
