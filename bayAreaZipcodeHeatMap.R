@@ -182,6 +182,42 @@ emcrimeurl <- "https://moto.data.socrata.com/resource/icdc-r3z6.csv?"
 emcrimefn <- "cdata/emCrime.csv"
 em <- pullCrime(emcrimeurl, emcrimefn, "incident_datetime")
 
+
+# San Leandro
+slcrimeurl <- "https://moto.data.socrata.com/resource/6nbc-apvm.csv?"
+slcrimefn <- "cdata/slCrime.csv"
+sl <- pullCrime(slcrimeurl, slcrimefn, "incident_datetime")
+
+# Albany
+albanycrimeurl <- "https://moto.data.socrata.com/resource/n5yu-6kr8.csv?"
+albanycrimefn <- "cdata/albanyCrime.csv"
+albany <- pullCrime(albanycrimeurl, albanycrimefn, "incident_datetime")
+
+# El Cerrito
+eccrimeurl <- "https://moto.data.socrata.com/resource/a9zr-qcds.csv?"
+eccrimefn <- "cdata/ecCrime.csv"
+ec <- pullCrime(eccrimeurl, eccrimefn, "incident_datetime")
+
+# Lafayette
+lfcrimeurl <- "https://moto.data.socrata.com/resource/bxwm-gjq4.csv?"
+lfcrimefn <- "cdata/lfCrime.csv"
+lf <- pullCrime(lfcrimeurl, lfcrimefn, "incident_datetime")
+
+# Campbell
+campbellcrimeurl <- "https://moto.data.socrata.com/resource/shz2-ig3z.csv?"
+campbellcrimefn <- "cdata/capmbellCrime.csv"
+campbell <- pullCrime(campbellcrimeurl, campbellcrimefn, "incident_datetime")
+
+# Mountain View
+mtvcrimeurl <- "https://moto.data.socrata.com/resource/k56q-mt3c.csv?"
+mtvcrimefn <- "cdata/mtvCrime.csv"
+mtv <- pullCrime(mtvcrimeurl, mtvcrimefn, "incident_datetime")
+
+
+
+
+
+
 # Counties - difficult to integrate with city police data for this project
 
 # Alameda County crime API
@@ -212,6 +248,15 @@ rwc <- mutate(rwc, description=as.character(incident_description))
 mp <- mutate(mp, description=as.character(incident_description))
 pied <- mutate(pied, description=as.character(incident_description))
 em <- mutate(em, description=as.character(incident_description))
+sl <- mutate(sl, description=as.character(incident_description))
+albany <- mutate(albany, description=as.character(incident_description))
+ec <- mutate(ec, description=as.character(incident_description))
+lf <- mutate(lf, description=as.character(incident_description))
+campbell <- mutate(campbell, description=as.character(incident_description))
+mtv <- mutate(mtv, description=as.character(incident_description))
+
+
+
 
 # counties
 #acc <- mutate(acc, description=as.character(crimedescription))
@@ -231,7 +276,12 @@ dc <- rename(dc, longitude=Longitude, latitude=Latitude)
 # mp done
 # pied done
 # em done
-
+# sl done
+# albany done
+# ec done
+# lf done
+# capmbell done
+# mtv done
 
 # counties
 #acc <- getLatLon(acc, "location_1")
@@ -251,6 +301,12 @@ rwc$date <- as.POSIXct(strptime(rwc$incident_datetime, dateformat.socrata))
 mp$date <- as.POSIXct(strptime(mp$incident_datetime, dateformat.socrata))
 pied$date <- as.POSIXct(strptime(pied$incident_datetime, dateformat.socrata))
 em$date <- as.POSIXct(strptime(em$incident_datetime, dateformat.socrata))
+sl$date <- as.POSIXct(strptime(sl$incident_datetime, dateformat.socrata))
+albany$date <- as.POSIXct(strptime(albany$incident_datetime, dateformat.socrata))
+ec$date <- as.POSIXct(strptime(ec$incident_datetime, dateformat.socrata))
+lf$date <- as.POSIXct(strptime(lf$incident_datetime, dateformat.socrata))
+campbell$date <- as.POSIXct(strptime(campbell$incident_datetime, dateformat.socrata))
+mtv$date <- as.POSIXct(strptime(mtv$incident_datetime, dateformat.socrata))
 
 
 
@@ -268,16 +324,27 @@ rwc$origin <- "rwc"
 mp$origin <- "mp"
 pied$origin <- "pied"
 em$origin <- "em"
+sl$origin <- "sl"
+albany$origin <- "albany"
+ec$origin <- "ec"
+lf$origin <- "lf"
+campbell$origin <- "campbell"
+mtv$origin <- "mtv"
+
 
 # counties
 #acc$origin <- "acc"
 #smc$origin <- "smc"
 
+
+
+
+
 print("merging data")
 merged <- Reduce(function(x,y) {
     rbind(select(x, origin, description, date, latitude, longitude),
           select(y, origin, description, date, latitude, longitude))
-}, list(sfc,oak,berk,dc,rwc,mp,pied,em)) %>% 
+}, list(sfc,oak,berk,dc,rwc,mp,pied,em,sl,albany,ec,lf,campbell,mtv)) %>% 
     mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 
