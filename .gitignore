@@ -1,5 +1,6 @@
 **/*.dump
 **/*.csv
+zipGeo/
 credentials.R
 .Rhistory
 *.html
