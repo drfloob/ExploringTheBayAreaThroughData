@@ -1,3 +1,5 @@
+# install.packages(c("gdata", "jsonline", "RCurl", "tidyr", "dplyr", "data.table", "stringr", "zipcode", "leaflet", "httr", "readr"))
+
 library(gdata)
 library(jsonlite)
 library(RCurl)
@@ -8,6 +10,7 @@ library(stringr)
 library(zipcode)
 library(leaflet)
 library(httr)
+
 
 data("zipcode")
 
@@ -24,8 +27,12 @@ fn <- "zillowData.byZip.dump"
 if(!file.exists(fn)) {
     zdatafn <- "zdata/Zip_Zhvi_SingleFamilyResidence.csv"
     zdataurl <- "http://files.zillowstatic.com/research/public/Zip/Zip_Zhvi_SingleFamilyResidence.csv"
+    
+    if (!dir.exists(dirname(zdatafn))) {
+      dir.create(dirname(zdatafn), recursive = TRUE)
+    }
     if (!file.exists(zdatafn)) {
-        download.file(zdataurl, zdatafn)
+        download.file(zdataurl, zdatafn, method = "libcurl")
     }
     csv <- read.csv(zdatafn)
     sf <- csv[csv$Metro == "San Francisco" & csv$City %in% c("Oakland", "San Francisco", "San Mateo") & csv$X2016.02 < 900000,]
@@ -86,9 +93,12 @@ routefn <- "gdata.routes.dump"
 if (!file.exists(routefn)) {
     distances <- data.frame(zip=numeric(), distance=numeric())
     # avg minutes per trip
+    if (!dir.exists("gdata")) {
+        dir.create("gdata")
+    }
     for (n in names(gdata)) {
         vname <- paste(sep="", "g", n)
-        fn <- paste(sep="", "gdata/", n, ".dump")
+        fn <- paste0("gdata/", n, ".dump")
         if (file.exists(fn)) {
             source(fn)
         } else {
@@ -116,6 +126,10 @@ if (!file.exists(routefn)) {
 
 # -------------------------------------------------------------------------------
 #    Gather crime data
+
+if (!dir.exists("cdata/")) {
+    dir.create("cdata")
+}
 
 commonLimits <- paste0("$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'&$$app_token=", appToken)
 pullCrime <- function(url, fn, dt) {
@@ -427,6 +441,10 @@ m <- leaflet(data=merged)
 m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
 m <- addProviderTiles(m, "CartoDB.Positron")
 m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30))
+
+# run gatherZipcodeShapes.R
+m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.5")
+
 print(m)
 
 
