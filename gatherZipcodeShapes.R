@@ -1,5 +1,8 @@
+# to be called from within bayAreaZipcodeHeadMap.R, after merged dataset exists
+
 library(jsonlite)
 library(magrittr)
+library(lawn)
 
 zipDir <- "zipGeo"
 if (!dir.exists(zipDir)) dir.create(zipDir)
@@ -33,11 +36,25 @@ if (!file.exists(zipFile.gj)) {
 filteredZipFile <- file.path(zipDir, "filtered.save")
 if (!file.exists(filteredZipFile)) {
     topoData <- readLines(zipFile.gj, warn = F) %>% paste(collapse = "\n") %>% fromJSON(simplifyVector = F)
-    source("gData.dump")
-    goodZips <- names(gdata)
+    goodZips <- merged %>% group_by(zip) %>% summarise(count=n()) %>% filter(count > 10) %>% select(zip) %>% unlist
+    
     topoData$features <- Filter(function(f) {
         f$properties$ZCTA5CE10 %in% goodZips
     }, topoData$features)
+
+    # stolen from https://github.com/ropensci/lawn/blob/master/R/zzz.R
+    convert <- function(x) { jsonlite::toJSON(unclass(x), auto_unbox = TRUE, digits = 22) }
+    
+    
+    # lawn is being used to count the number of crimes that fall within each
+    # zipcode shape, to correct for "nearest centroid" zipcode matching
+    mergedGeoPoints <- lawn_featurecollection(apply(merged, 1, function(x) { lawn_point(as.numeric(c(x["longitude"], x["latitude"])))}))
+    tdjson <- convert(topoData)
+    mgpjson <- convert(mergedGeoPoints)
+    
+    lc <- lawn_count(tdjson, mgpjson)
+    
+    ## WOOOO! lc$features$properties$pt_count
     
     save(topoData, file = filteredZipFile)
 } else {

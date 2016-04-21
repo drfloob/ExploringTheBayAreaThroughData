@@ -1,4 +1,4 @@
-# install.packages(c("gdata", "jsonline", "RCurl", "tidyr", "dplyr", "data.table", "stringr", "zipcode", "leaflet", "httr", "readr"))
+# install.packages(c("gdata", "jsonline", "RCurl", "tidyr", "dplyr", "data.table", "stringr", "zipcode", "leaflet", "httr", "readr", "lawn"))
 
 library(gdata)
 library(jsonlite)
@@ -44,84 +44,6 @@ if(!file.exists(fn)) {
 }
 
 
-# -------------------------------------------------------------------------------
-#    Pull Google Maps Data by Zipcode
-
-gfn <- "gData.dump"
-if (!file.exists(gfn)) {
-    if (!file.exists(credFile)) {
-        stop("Missing credentials file: credentials.R. See README.md for formatting")
-    }
-    
-    url <- function(zip) {
-        root <- "https://maps.googleapis.com/maps/api/directions/json?"
-        u <- paste(sep="", 
-                   root, 
-                   "origin=", zip,
-                   "&destination=225 Bush St, San Francisco, CA",
-                   "&mode=transit",
-                   "&key=", apiKey)
-        URLencode(u)
-    }
-    gdata <- list()
-    
-    rn <- sfsimp$RegionName
-    for (i in seq_along(rn)) {
-        
-        print(rn[i])
-        doc <- fromJSON(url(rn[i]))
-        gdata[[as.character(rn[i])]] <- doc
-    }
-    
-    dump(c('gdata'), gfn)
-}
-
-source(gfn)
-
-
-avgRouteDuration <- function(routes, i) {
-    Reduce(function(s, l) {
-        v = l$duration$value
-        if(!is.null(v)) {
-            s <- s + v
-        }
-        s
-    }, routes[i,"legs"], 0)
-    
-}
-routefn <- "gdata.routes.dump"
-if (!file.exists(routefn)) {
-    distances <- data.frame(zip=numeric(), distance=numeric())
-    # avg minutes per trip
-    if (!dir.exists("gdata")) {
-        dir.create("gdata")
-    }
-    for (n in names(gdata)) {
-        vname <- paste(sep="", "g", n)
-        fn <- paste0("gdata/", n, ".dump")
-        if (file.exists(fn)) {
-            source(fn)
-        } else {
-            runsum <- 0
-            g <- gdata[[n]]
-            runcnt <- 0
-            # dput(list('nrow routes', nrow(g$routes)))
-            for (r in 1:nrow(g$routes)) {
-                s <- avgRouteDuration(g$routes, r)
-                runsum <- runsum + s
-                runcnt <- runcnt + 1
-            }
-            # dput(list(n, sprintf("%0.2f", runsum/runcnt/60)))
-            assign(vname, list(zip=as.numeric(n), distance=runsum/runcnt/60))
-            dump(vname, file=fn)
-        }
-        
-        distances <- rbind(distances, get(vname))
-    }
-    dump(c('distances'), routefn)
-} else {
-    source(routefn)
-}
 
 
 # -------------------------------------------------------------------------------
@@ -416,7 +338,8 @@ merged <- filter(merged, !is.na(latitude) & !is.na(longitude))
 
 
 print("filtering down to pertinent crime types")
-crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|stolen vehicle|knife|cut|vehicle theft"
+#crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|stolen vehicle|knife|cut|vehicle theft"
+crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|knife|cut"
 merged <- rowwise(merged) %>% filter(grepl(crimeDescGrepPattern, description, ignore.case=TRUE))
     
     
@@ -433,18 +356,126 @@ getZipViaLstSqrz <- function(lng,lat) {
 merged <- merged %>% rowwise() %>% mutate(zip=getZipViaLstSqrz(longitude, latitude))
 
 
+# NOTES!!!
+# 
+# Vehicle crimes get reported all over the place. Probably due to vehicle
+# recovery some place way out of town. Removing vehicle crimes to see if it
+# clear up the crime picture.
+# 
+# remapping zipcodes for zips with crimes < 20
+# 
+# The idea: the rank of the first quartile is 54.75. 80% of zip codes have more 
+# than 20 crimes listed. Upon inspection of zipcodes for which there are <= 10 
+# crimes, all appear to be reported by police from another city. Most for 
+# vehicle theft or recovery, some for domestic abuse situations. I think it's 
+# safe to exclude these zip codes from comparison since there is no proper crime
+# data from these cities.
+
+# -------------------------------------------------------------------------------
+#    Pull Google Maps Data by Zipcode
+
+print("pulling google maps - public transportation times")
+gfn <- "gData.dump"
+if (!file.exists(gfn)) {
+    if (!file.exists(credFile)) {
+        stop("Missing credentials file: credentials.R. See README.md for formatting")
+    }
+    
+    url <- function(zip) {
+        root <- "https://maps.googleapis.com/maps/api/directions/json?"
+        u <- paste(sep="", 
+                   root, 
+                   "origin=", zip,
+                   "&destination=225 Bush St, San Francisco, CA",
+                   "&mode=transit",
+                   "&key=", apiKey)
+        URLencode(u)
+    }
+    gdata <- list()
+
+    uniqueZips <- unique(merged$zip)
+    for (i in seq_along(uniqueZips)) {
+        print(uniqueZips[i])
+        doc <- fromJSON(url(uniqueZips[i]))
+        gdata[[as.character(uniqueZips[i])]] <- doc
+    }
+    
+    save(gdata, file = gfn)
+} else {
+    load(file = gfn)
+}
+
+avgRouteDuration <- function(routes, i) {
+    Reduce(function(s, l) {
+        v = l$duration$value
+        if(!is.null(v)) {
+            s <- s + v
+        }
+        s
+    }, routes[i,"legs"], 0)
+    
+}
+routefn <- "gdata.routes.dump"
+if (!file.exists(routefn)) {
+    distances <- data.frame(zip=numeric(), distance=numeric())
+    # avg minutes per trip
+    if (!dir.exists("gdata")) {
+        dir.create("gdata")
+    }
+    for (n in names(gdata)) {
+        vname <- paste(sep="", "g", n)
+        fn <- paste0("gdata/", n, ".dump")
+        if (file.exists(fn)) {
+            source(fn)
+        } else {
+            runsum <- 0
+            g <- gdata[[n]]
+            runcnt <- 0
+            for (r in 1:nrow(g$routes)) {
+                s <- avgRouteDuration(g$routes, r)
+                runsum <- runsum + s
+                runcnt <- runcnt + 1
+            }
+            # dput(list(n, sprintf("%0.2f", runsum/runcnt/60)))
+            assign(vname, list(zip=as.numeric(n), distance=runsum/runcnt/60))
+            dump(vname, file=fn)
+        }
+        
+        distances <- rbind(distances, get(vname))
+    }
+    save(distances, routefn)
+} else {
+    load(routefn)
+}
+
+
+
+
+
+# -------------------------------------------------------------------------------
+#    Mapping
 
 
 print("mapping crimes")
 
+mapPopups <- with(merged, sprintf("(%f,%f) %s [zip: %s][origin: %s]", latitude, longitude, description, zip, origin))
+
+# TEST filtering out sub-10 reported crimes
+# subN.n <- 30
+# subN <- merged[merged$zip %in% unlist(merged %>% group_by(zip) %>% summarise(count = n()) %>% filter(count <= subN.n) %>% select(zip)),]
+# mapPopups <- with(subN, sprintf("(%f,%f) %s [zip: %s][origin: %s]", latitude, longitude, description, zip, origin))
+# m <- leaflet(data=subN)
+# end TEST
+
+print("runing gatherZipcodeShapes.R")
+source("gatherZipcodeShapes.R")
+
+
 m <- leaflet(data=merged)
 m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
 m <- addProviderTiles(m, "CartoDB.Positron")
-m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30))
-
-# run gatherZipcodeShapes.R
-m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.5")
-
+m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30), popup = mapPopups)
+m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.6", weight = 2)
 print(m)
 
 
