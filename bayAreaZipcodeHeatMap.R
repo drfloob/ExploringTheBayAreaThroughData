@@ -340,12 +340,12 @@ merged <- filter(merged, !is.na(latitude) & !is.na(longitude))
 
 
 print("filtering down to pertinent crime types")
-crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|knife|murder"
+crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|gun|deadly|weapon|strongarm|homicide|knife|murder"
 merged <- rowwise(merged) %>% filter(grepl(crimeDescGrepPattern, description, ignore.case=TRUE))
-    
+
 
 print("filtering out false positives for violent crime")
-falsePositiveCrimeDescGrepPattern <- "no weapon"
+falsePositiveCrimeDescGrepPattern <- "no weapon|poss|carry|turn"
 merged <- rowwise(merged) %>% filter(!grepl(falsePositiveCrimeDescGrepPattern, description, ignore.case=TRUE))
 
 
