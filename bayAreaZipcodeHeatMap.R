@@ -34,9 +34,9 @@ if(!file.exists(fn)) {
     if (!file.exists(zdatafn)) {
         download.file(zdataurl, zdatafn, method = "libcurl")
     }
-    csv <- read.csv(zdatafn)
-    sf <- csv[csv$Metro == "San Francisco" & csv$City %in% c("Oakland", "San Francisco", "San Mateo") & csv$X2016.02 < 900000,]
-    sfsimp <- sf[,c("City", "RegionName", "X2016.02")]
+    zdata <- read.csv(zdatafn) %>% 
+        filter(Metro == "San Francisco") %>% 
+        select(city=City, zip=RegionName, zhvi=X2016.02)
     
 } else {
     dump(c('sf', 'sfsimp'), fn)
