@@ -179,27 +179,16 @@ ph <- pullCrime(phcrimeurl, phcrimefn, "incident_datetime")
 # Martinez
 martcrimeurl <- "https://moto.data.socrata.com/resource/vpaa-2jww.csv?"
 martcrimefn <- "cdata/martinezCrime.csv"
-mart <- pullCrime(martcrimeurl, martcrimefn, "incident_datetime")
+mart <- pullCrime(martcrimeurl, martcrimefn, "created_at")
 
 
 
-# Counties - difficult to integrate with city police data for this project
+# Counties - potentially difficult to integrate with city police data for this project
 
 # Alameda County crime API
-#accrimeurl <- "https://data.acgov.org/resource/js8f-yfqf.csv?"
-#accrimefn <- "cdata/acCrime.csv"
-#acc <- pullCrime(accrimeurl, accrimefn, "datetime")
 accrimeurl <- "https://moto.data.socrata.com/resource/bvi2-5rde.csv?"
 accrimefn <- "cdata/acCrime.csv"
 acc <- pullCrime(accrimeurl, accrimefn, "incident_datetime")
-
-# San Mateo Country Sheriff (not an official API)
-#smccrimeurl <- "http://smso.crimegraphics.com/2013/MapData.asmx/GetMapPoints"
-#smccrimefn <- "cdata/smcCrime.csv"
-#smccrimepost <- '{"AGCODE":"SMSO","StartDate":"01/01/2016","EndDate":"03/31/2016","MapType":"C","GroupTypes":"HOMICIDE,MANSLAU,ROBBERY,ASSAULT,BURGLARY,STOLVEH,ATTBURG","CirLat":0,"CirLon":0,"CirRad":0}'
-#smcdateformat <- "%m/%d/%Y %H:%M:%S %p"
-#smcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow")
-#smc <- pullCrimeGraphics(smccrimeurl, smccrimefn, smccrimepost, "DateOpened", smcdateformat, smcasis)
 
 
 
