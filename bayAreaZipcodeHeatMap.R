@@ -492,28 +492,60 @@ m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerCluster
 m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.6", weight = 2)
 print(m)
 
+# -------------------------------------------------------------------------------
+# Choropleth map of crime distribution by zipcode
+#
+# inspiration: 
+#  * http://www.rpubs.com/enzoma/79630, 
+#  * http://rpubs.com/jcheng/us-states-2, 
+#  * https://rstudio.github.io/leaflet/json.html
+#
+# CA zipcode shapes: generated using instructions from
+# https://github.com/jgoodall/us-maps
+# 
 # colored zips: black to bright green (black is crimey, bright green is ok)
-col <- colorNumeric(c("#ccffcc", "black", "red"), domain = range(lapply(topoData$features, function(f) {f$properties$pt_count})))
+
+pal <- colorNumeric(c("green", "black"), domain = range(lapply(topoData$features, function(f) {f$properties$pt_count})))
 
 td2 <- topoData
 td2$style <- list(
     fillOpacity = 0.8
 )
 td2$features <- lapply(td2$features, function(feat) {
-    feat$properties$style <- list(fillColor = col(as.numeric(feat$properties$pt_count)))
+    feat$properties$style <- list(fillColor = pal(as.numeric(feat$properties$pt_count)))
+    # feat$properties$popupContent <- paste("Crime count: ", feat$properties$pt_count)
     feat
 })
 
 m <- leaflet(data=merged)
-m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
+m <- setView(m, lat=37.70, lng=-122.25, zoom=11)
 m <- addProviderTiles(m, "CartoDB.Positron")
 m <- addGeoJSON(map=m, geojson = td2, color = "#333", opacity = "0.75", weight = 2)
+m <- addLegend(m, "bottomleft", pal = pal, title="Crimes, Q1 2016", opacity = 0.8,
+               values = unlist(lapply(topoData$features, function(f) {f$properties$pt_count})))
 print(m)
 
 
 
+# -------------------------------------------------------------------------------
+# Choropleth map of public transportation time
+pal.range <- c(0,90)
+pal <- colorNumeric(c("green", "black", "red"), domain = pal.range)
 
-# CA zipcode shapes: generated using instructions from
-# https://github.com/jgoodall/us-maps
-# 
-# Map generated using tutorial: https://rstudio.github.io/leaflet/json.html
+td.dist <- topoData
+td.dist$style <- list(
+    fillOpacity = 0.8
+)
+td.dist$features <- lapply(td.dist$features, function(feat) {
+    feat$properties$style <- list(fillColor = pal(as.numeric(distances[distances$zip == feat$properties$ZCTA5CE10,"distance"])))
+    feat
+})
+
+
+m <- leaflet()
+m <- setView(m, lat=37.70, lng=-122.25, zoom=11)
+m <- addProviderTiles(m, "CartoDB.Positron")
+m <- addGeoJSON(map=m, geojson = td.dist, color = "#333", opacity = "0.75", weight = 2)
+m <- addLegend(m, "bottomleft", pal = pal, title="Public Transit<br />Time (minutes)", opacity = 0.8, values = pal.range)
+print(m)
+
