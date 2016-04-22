@@ -54,8 +54,8 @@ if (!dir.exists("cdata/")) {
 }
 
 commonLimits <- paste0("$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'&$$app_token=", appToken)
-pullCrime <- function(url, fn, dt) {
-    l <- sprintf(commonLimits, dt)
+pullCrime <- function(url, fn, dt, cl=commonLimits) {
+    l <- sprintf(cl, dt)
     url <- paste0(url, l)
     print(url)
     if (!file.exists(fn)) {
@@ -87,9 +87,11 @@ sfcrimefn <- "cdata/sfCrime.csv"
 sfc <- pullCrime(sfcrimeurl, sfcrimefn, "date")
 
 # Oakland crime API
+# special, since they only provide 90 days of rolling crime data
 oakcrimeurl <- "https://data.oaklandnet.com/resource/3xav-7geq.csv?"
 oakcrimefn <- "cdata/oakCrime.csv"
-oak <- pullCrime(oakcrimeurl, oakcrimefn, "datetime")
+oakcl <- paste0("$limit=500000&$$app_token=", appToken)
+oak <- pullCrime(oakcrimeurl, oakcrimefn, "datetime", oakcl)
 
 # Berkeley crime API
 berkcrimeurl <- "https://data.cityofberkeley.info/resource/s24d-wsnp.csv?"
@@ -187,6 +189,9 @@ mart <- pullCrime(martcrimeurl, martcrimefn, "incident_datetime")
 #accrimeurl <- "https://data.acgov.org/resource/js8f-yfqf.csv?"
 #accrimefn <- "cdata/acCrime.csv"
 #acc <- pullCrime(accrimeurl, accrimefn, "datetime")
+accrimeurl <- "https://moto.data.socrata.com/resource/bvi2-5rde.csv?"
+accrimefn <- "cdata/acCrime.csv"
+acc <- pullCrime(accrimeurl, accrimefn, "incident_datetime")
 
 # San Mateo Country Sheriff (not an official API)
 #smccrimeurl <- "http://smso.crimegraphics.com/2013/MapData.asmx/GetMapPoints"
@@ -204,7 +209,7 @@ mart <- pullCrime(martcrimeurl, martcrimefn, "incident_datetime")
 
 print("unifying descriptions")
 sfc <- mutate(sfc, description=as.character(descript))
-oak <- mutate(oak, description=as.character(description))
+oak <- mutate(oak, description=paste(sep=" - ", as.character(crimetype), as.character(description)))
 berk <- mutate(berk, description=as.character(offense))
 dc <- mutate(dc, description=as.character(Description))
 rwc <- mutate(rwc, description=as.character(incident_description))
@@ -222,12 +227,12 @@ fr <- mutate(fr, description=as.character(incident_description))
 dublin <- mutate(dublin, description=as.character(incident_description))
 ph <- mutate(ph, description=as.character(incident_description))
 mart <- mutate(mart, description=as.character(incident_description))
+acc <- mutate(acc, description=as.character(incident_description))
 
 
 
 
 # counties
-#acc <- mutate(acc, description=as.character(crimedescription))
 #smc <- mutate(smc, description=as.character(Description))
 
 
@@ -255,10 +260,10 @@ dc <- rename(dc, longitude=Longitude, latitude=Latitude)
 # dublin done
 # ph done
 # mart done
+# acc done
 
 
 # counties
-#acc <- getLatLon(acc, "location_1")
 #smc <- rename(smc, longitude=Longitude, latitude=Latitude)
 
 
@@ -286,11 +291,11 @@ fr$date <- as.POSIXct(strptime(fr$incident_datetime, dateformat.socrata))
 dublin$date <- as.POSIXct(strptime(dublin$incident_datetime, dateformat.socrata))
 ph$date <- as.POSIXct(strptime(ph$incident_datetime, dateformat.socrata))
 mart$date <- as.POSIXct(strptime(mart$incident_datetime, dateformat.socrata))
+acc$date <- as.POSIXct(strptime(acc$incident_datetime, dateformat.socrata))
 
 
 
 # counties
-#acc$date <- as.POSIXct(strptime(acc$datetime, dateformat.socrata))
 #smc$date <- as.POSIXct(strptime(smc$DateOpened, dateformat.crimegraphics))
 
 
@@ -314,10 +319,10 @@ fr$origin <- "fr"
 dublin$origin <- "dublin"
 ph$origin <- "ph"
 mart$origin <- "mart"
+acc$origin <- "acc"
 
 
 # counties
-#acc$origin <- "acc"
 #smc$origin <- "smc"
 
 
@@ -328,7 +333,7 @@ print("merging data")
 merged <- Reduce(function(x,y) {
     rbind(select(x, origin, description, date, latitude, longitude),
           select(y, origin, description, date, latitude, longitude))
-}, list(sfc,oak,berk,dc,rwc,mp,pied,em,sl,albany,ec,lf,campbell,mtv,uc,fr,dublin,ph,mart)) %>% 
+}, list(sfc,oak,berk,dc,rwc,mp,pied,em,sl,albany,ec,lf,campbell,mtv,uc,fr,dublin,ph,mart,acc)) %>% 
     mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
 
 
@@ -338,11 +343,14 @@ merged <- filter(merged, !is.na(latitude) & !is.na(longitude))
 
 
 print("filtering down to pertinent crime types")
-#crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|stolen vehicle|knife|cut|vehicle theft"
-crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|knife|cut"
+crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|robbery|assault|homicide|knife|murder"
 merged <- rowwise(merged) %>% filter(grepl(crimeDescGrepPattern, description, ignore.case=TRUE))
     
-    
+
+print("filtering out false positives for violent crime")
+falsePositiveCrimeDescGrepPattern <- "no weapon"
+merged <- rowwise(merged) %>% filter(!grepl(falsePositiveCrimeDescGrepPattern, description, ignore.case=TRUE))
+
 
 print("associating zip codes with lat/lng")
 zc <- data.table(zipcode, key=c("latitude", "longitude"))
