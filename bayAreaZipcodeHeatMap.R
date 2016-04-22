@@ -550,10 +550,18 @@ td.dist$features <- lapply(td.dist$features, function(feat) {
 
 
 m <- leaflet()
-m <- setView(m, lat=37.70, lng=-122.25, zoom=11)
+m <- setView(m, lat=37.75, lng=-122.25, zoom=10)
 m <- addProviderTiles(m, "CartoDB.Positron")
 m <- addGeoJSON(map=m, geojson = td.dist, color = "#333", opacity = "0.75", weight = 2)
-m <- addLegend(m, "bottomleft", pal = pal, title="Public Transit<br />Time (minutes)", opacity = 0.8, values = pal.range)
+m <- addLegend(m, "bottomleft", pal = pal, title="Transit Time", opacity = 0.8, values = pal.range,
+               labFormat = function(type, breaks) {
+                   lapply(breaks, function(b) {
+                       if (b < 60) paste0(b,"m")
+                       else {
+                           paste0(b%/%60,"h ", b%%60,"m")
+                       }
+                   })
+               })
 print(m)
 
 
