@@ -484,12 +484,37 @@ print("runing gatherZipcodeShapes.R")
 source("gatherZipcodeShapes.R")
 
 
+# # zip code shapes and clustered crimes with popups
+# m <- leaflet(data=merged)
+# m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
+# m <- addProviderTiles(m, "CartoDB.Positron")
+# m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30), popup = mapPopups)
+# m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.6", weight = 2)
+# print(m)
+
+
+
+# from http://www.rpubs.com/enzoma/79630
+
+# colored zips: black to bright green (black is crimey, bright green is ok)
+col <- colorNumeric(c("#ccffcc", "black", "red"), domain = range(lapply(topoData$features, function(f) {f$properties$pt_count})))
+
+td2 <- topoData
+td2$style <- list(
+    fillOpacity = 0.8
+)
+td2$features <- lapply(td2$features, function(feat) {
+    feat$properties$style <- list(fillColor = col(as.numeric(feat$properties$pt_count)))
+    feat
+})
+
 m <- leaflet(data=merged)
 m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
 m <- addProviderTiles(m, "CartoDB.Positron")
-m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30), popup = mapPopups)
-m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.6", weight = 2)
+m <- addGeoJSON(map=m, geojson = td2, color = "#333", opacity = "0.75", weight = 2)
 print(m)
+
+
 
 
 # CA zipcode shapes: generated using instructions from
