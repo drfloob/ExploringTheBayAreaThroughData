@@ -53,11 +53,11 @@ if (!dir.exists("cdata/")) {
     dir.create("cdata")
 }
 
-commonLimits <- paste0("$limit=500000&$where=%s between '2015-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'&$$app_token=", appToken)
+commonLimits <- paste0("$limit=500000&$where=%s between '2016-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'&$$app_token=", appToken)
 pullCrime <- function(url, fn, dt, cl=commonLimits) {
     l <- sprintf(cl, dt)
     url <- paste0(url, l)
-    print(url)
+    # print(url)
     if (!file.exists(fn)) {
         x <- httr::GET(url=URLencode(url))
         write.csv(content(x, col_names=TRUE, col_types=NULL), file = fn)
