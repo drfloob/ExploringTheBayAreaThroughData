@@ -257,13 +257,13 @@ dc <- rename(dc, longitude=Longitude, latitude=Latitude)
 
 
 
-dateformat.socrata <- "%Y-%m-%dT%H:%M:%S"
+dateformat.socrata <- "%Y-%m-%d %H:%M:%S"
 dateformat.crimegraphics <- "%m/%d/%Y %H:%M:%S %p"
 
 print("unifying dates")
-sfc$date <- as.POSIXct(strptime(sfc$date, dateformat.socrata))
+sfc$date <- as.POSIXct(strptime(paste(sfc$date, sfc$time), "%Y-%m-%d %H:%M"))
 oak$date <- as.POSIXct(strptime(oak$datetime, dateformat.socrata))
-berk$date <- as.POSIXct(strptime(berk$eventdt, dateformat.socrata))
+berk$date <- as.POSIXct(strptime(paste(berk$eventdt, berk$eventtm), "%Y-%m-%d %H:%M"))
 dc$date <- as.POSIXct(strptime(dc$DateOpened, dateformat.crimegraphics))
 rwc$date <- as.POSIXct(strptime(rwc$incident_datetime, dateformat.socrata))
 mp$date <- as.POSIXct(strptime(mp$incident_datetime, dateformat.socrata))
@@ -279,8 +279,13 @@ uc$date <- as.POSIXct(strptime(uc$incident_datetime, dateformat.socrata))
 fr$date <- as.POSIXct(strptime(fr$incident_datetime, dateformat.socrata))
 dublin$date <- as.POSIXct(strptime(dublin$incident_datetime, dateformat.socrata))
 ph$date <- as.POSIXct(strptime(ph$incident_datetime, dateformat.socrata))
-mart$date <- as.POSIXct(strptime(mart$incident_datetime, dateformat.socrata))
+mart$date <- as.POSIXct(strptime(mart$created_at, dateformat.socrata))
 acc$date <- as.POSIXct(strptime(acc$incident_datetime, dateformat.socrata))
+
+# normalize oakland crime dates to 1/1 to 3/31. This is so we can filter out
+# wildly inaccurate dates later on.
+oakdtdiff <- min(oak$date, na.rm = T) - as.POSIXct("2016-01-01")
+oak <- mutate(oak, date = date - oakdtdiff)
 
 
 
@@ -324,6 +329,9 @@ merged <- Reduce(function(x,y) {
           select(y, origin, description, date, latitude, longitude))
 }, list(sfc,oak,berk,dc,rwc,mp,pied,em,sl,albany,ec,lf,campbell,mtv,uc,fr,dublin,ph,mart,acc)) %>% 
     mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
+
+print("refiltering by date") # just in case
+merged <- filter(merged, date >= "2016-01-01 00:00" & date < "2016-04-01 00:00")
 
 
 print("removing NA lat/lng")
