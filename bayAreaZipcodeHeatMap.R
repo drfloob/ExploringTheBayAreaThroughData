@@ -386,6 +386,7 @@ if (!file.exists(gfn)) {
         stop("Missing credentials file: credentials.R. See README.md for formatting")
     }
     
+    arrival_time <- ymd_h("2016-05-02 9am")
     url <- function(zip) {
         root <- "https://maps.googleapis.com/maps/api/directions/json?"
         u <- paste(sep="", 
@@ -393,6 +394,8 @@ if (!file.exists(gfn)) {
                    "origin=", zip,
                    "&destination=225 Bush St, San Francisco, CA",
                    "&mode=transit",
+                   "&avoid=tolls",
+                   paste0("&arrival_time=", as.numeric(arrival_time)),
                    "&key=", apiKey)
         URLencode(u)
     }
