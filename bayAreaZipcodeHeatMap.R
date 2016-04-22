@@ -1,4 +1,4 @@
-# install.packages(c("gdata", "jsonline", "RCurl", "tidyr", "dplyr", "data.table", "stringr", "zipcode", "leaflet", "httr", "readr", "lawn"))
+# install.packages(c("gdata", "jsonline", "RCurl", "tidyr", "dplyr", "data.table", "stringr", "zipcode", "leaflet", "httr", "readr", "lawn", "RColorBrewer"))
 
 library(gdata)
 library(jsonlite)
@@ -10,6 +10,7 @@ library(stringr)
 library(zipcode)
 library(leaflet)
 library(httr)
+library(RColorBrewer)
 
 
 data("zipcode")
@@ -554,4 +555,49 @@ m <- addProviderTiles(m, "CartoDB.Positron")
 m <- addGeoJSON(map=m, geojson = td.dist, color = "#333", opacity = "0.75", weight = 2)
 m <- addLegend(m, "bottomleft", pal = pal, title="Public Transit<br />Time (minutes)", opacity = 0.8, values = pal.range)
 print(m)
+
+
+# -------------------------------------------------------------------------------
+# Choropleth map of home value indexes (Zillow)
+
+pal.breaks <- c(0,5,8,13,18,100)*100000
+x <- cut(zdata$zhvi, breaks=pal.breaks)
+pal.qtl <- as.vector(table(x)) / sum(as.vector(table(x)))
+lapply(seq_along(pal.qtl), function(i) {sum(pal.qtl[1:i])}) %>% unlist -> pal.qtl
+
+pal.range = range(zdata$zhvi)
+pal.pal <- brewer.pal(n=4, "RdYlGn") %>% rev
+pal <- colorQuantile(pal.pal, domain = zdata$zhvi, probs = c(0, pal.qtl))
+# previewColors(pal, arrange(zdata, zhvi)$zhvi)
+
+td.z <- topoData
+td.z$style <- list(
+    fillOpacity = 0.8
+)
+td.z$features <- lapply(td.z$features, function(feat) {
+    feat$properties$style <- list(fillColor = pal(zdata[zdata$zip == feat$properties$ZCTA5CE10,"zhvi"]))
+    feat
+})
+
+m <- leaflet()
+m <- setView(m, lat=37.70, lng=-122.25, zoom=11)
+m <- addProviderTiles(m, "CartoDB.Positron")
+m <- addGeoJSON(map=m, geojson = td.z, color = "#333", opacity = "0.75", weight = 2)
+m <- addLegend(m, "bottomleft", pal = pal, title="ZHVI", opacity = 0.8, values = zdata$zhvi,
+               labFormat = function(type, qtl, p) {
+                   fmt <- function(x) {
+                       if (x < 1000000)
+                           paste0("$", x %/% 1000, "K")
+                       else
+                           sprintf("$%0.1fM", x / 1000000)
+                   }
+                   ret <- c()
+                   qtl <- as.vector(qtl)
+                   for (i in 2:length(qtl)) {
+                       ret <- c(ret, paste(sep=" - ", fmt(qtl[i-1]), fmt(qtl[i])))
+                   }
+                   ret
+               })
+print(m)
+
 
