@@ -483,18 +483,14 @@ mapPopups <- with(merged, sprintf("(%f,%f) %s [zip: %s][origin: %s]", latitude, 
 print("runing gatherZipcodeShapes.R")
 source("gatherZipcodeShapes.R")
 
-
-# # zip code shapes and clustered crimes with popups
-# m <- leaflet(data=merged)
-# m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
-# m <- addProviderTiles(m, "CartoDB.Positron")
-# m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30), popup = mapPopups)
-# m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.6", weight = 2)
-# print(m)
-
-
-
-# from http://www.rpubs.com/enzoma/79630
+# -------------------------------------------------------------------------------
+# zip code shapes and clustered crimes with popups
+m <- leaflet(data=merged)
+m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
+m <- addProviderTiles(m, "CartoDB.Positron")
+m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30), popup = mapPopups)
+m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.6", weight = 2)
+print(m)
 
 # colored zips: black to bright green (black is crimey, bright green is ok)
 col <- colorNumeric(c("#ccffcc", "black", "red"), domain = range(lapply(topoData$features, function(f) {f$properties$pt_count})))
