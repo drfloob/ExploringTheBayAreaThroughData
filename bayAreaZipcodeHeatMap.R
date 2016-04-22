@@ -439,10 +439,15 @@ if (!file.exists(routefn)) {
             runsum <- 0
             g <- gdata[[n]]
             runcnt <- 0
-            for (r in 1:nrow(g$routes)) {
-                s <- avgRouteDuration(g$routes, r)
-                runsum <- runsum + s
-                runcnt <- runcnt + 1
+            if (length(g$routes) == 0) {
+                runsum<-99999
+                runcnt<-1
+            } else {
+                for (r in 1:nrow(g$routes)) {
+                    s <- avgRouteDuration(g$routes, r)
+                    runsum <- runsum + s
+                    runcnt <- runcnt + 1
+                }
             }
             # dput(list(n, sprintf("%0.2f", runsum/runcnt/60)))
             assign(vname, list(zip=as.numeric(n), distance=runsum/runcnt/60))
@@ -451,7 +456,7 @@ if (!file.exists(routefn)) {
         
         distances <- rbind(distances, get(vname))
     }
-    save(distances, routefn)
+    save(distances, file = routefn)
 } else {
     load(routefn)
 }
