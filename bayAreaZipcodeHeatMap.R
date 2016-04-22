@@ -414,14 +414,19 @@ if (!file.exists(gfn)) {
 }
 
 avgRouteDuration <- function(routes, i) {
-    Reduce(function(s, l) {
-        v = l$duration$value
-        if(!is.null(v)) {
-            s <- s + v
-        }
+    ret <- Reduce(function(s, leg) {
+        v <- Reduce(function(t, step) {
+            # exclude walk time from transit directions. It's the biggest source
+            # of variability in transit durations since it's the slowest transit
+            # method by an order of magnitude.
+            tmp <- step[step$travel_mode != "WALKING",]
+            sum(tmp$duration$value)
+        }, leg$steps, 0)
+        s <- s + v
         s
     }, routes[i,"legs"], 0)
-    
+    #print(list(ret=ret))
+    ret
 }
 routefn <- "gdata.routes.dump"
 if (!file.exists(routefn)) {
@@ -439,6 +444,7 @@ if (!file.exists(routefn)) {
             runsum <- 0
             g <- gdata[[n]]
             runcnt <- 0
+            #print(list(lengthOfGRoutes = length(g$routes)))
             if (length(g$routes) == 0) {
                 runsum<-99999
                 runcnt<-1
