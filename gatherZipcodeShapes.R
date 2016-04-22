@@ -35,12 +35,14 @@ if (!file.exists(zipFile.gj)) {
 
 filteredZipFile <- file.path(zipDir, "filtered.save")
 if (!file.exists(filteredZipFile)) {
-    topoData <- readLines(zipFile.gj, warn = F) %>% paste(collapse = "\n") %>% fromJSON(simplifyVector = F)
+    #topoData <- readLines(zipFile.gj, warn = F) %>% paste(collapse = "\n") %>% fromJSON(simplifyVector = F)
+    topoData <- lawn_featurecollection(readLines(zipFile.gj))
     goodZips <- merged %>% group_by(zip) %>% summarise(count=n()) %>% filter(count > 10) %>% select(zip) %>% unlist
     
-    topoData$features <- Filter(function(f) {
-        f$properties$ZCTA5CE10 %in% goodZips
-    }, topoData$features)
+    # topoData$features <- Filter(function(f) {
+    #     f$properties$ZCTA5CE10 %in% goodZips
+    # }, topoData$features)
+    topoData$features <- topoData$features[topoData$features$properties$ZCTA5CE10 %in% goodZips,]
 
     # stolen from https://github.com/ropensci/lawn/blob/master/R/zzz.R
     convert <- function(x) { jsonlite::toJSON(unclass(x), auto_unbox = TRUE, digits = 22) }
@@ -55,6 +57,13 @@ if (!file.exists(filteredZipFile)) {
     lc <- lawn_count(tdjson, mgpjson)
     
     ## WOOOO! lc$features$properties$pt_count
+    # From looking at the dat, there are 6 zips with 0-2 crimes, the next fewest
+    # having 8. Filtering those out of consideration as "not enough data"
+    lc$features <- lc$features[lc$features$properties$pt_count >= 3,]
+    topoData <- lc
+    
+    # convert to standard json
+    topoData <- unclass(topoData) %>% toJSON %>% fromJSON(simplifyVector = FALSE)
     
     save(topoData, file = filteredZipFile)
 } else {
