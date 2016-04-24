@@ -1,0 +1,739 @@
+---
+title: "Exploring the Bay Area through data"
+author: "Adam J Heller (aj@drfloob.com; [drfloob.com](http://drfloob.com))"
+date: "April 23, 2016"
+output: 
+    html_document:
+        toc: true
+        toc_float: true
+        theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, fig.width=8, fig.height=8, self.contained = TRUE)
+```
+
+## Good news, everyone!
+
+My wife Kelly and I are relocating! She accepted a great job at [Radius Intelligence](https://radius.com/), and in the near future, we'll be unboxing our stuff in a new home not far from San Francisco. With data projects on my mind, I decided to see if I could piece together a picture of the Bay Area, with the goal of figuring out where we'd like to live.
+
+This script walks you through using a couple different web APIs for data collection and remote services, a handful of best practices in data tidying, some exploratory data analysis, and ultimately a few great map visualizations.
+
+*Are you hiring? I'm actively looking for work in the Bay Area.* [*Drop me a line!*](mailto:aj@drfloob.com?subject=Hiring in the Bay Area)
+
+## tl;dr
+
+Skip ahead to [Maps](#maps) for the payoff.
+
+## What is there to consider?
+
+After our basic needs are met, we'd be happy to live most places. We like all kinds of people, and no matter where we call home, we like to get out and explore. I thought it might be enlightening to see where our more basic needs would be *least* well met, so we can rule those spots out.
+
+To begin, **we don't want commutes eating up 3+ hours a day**. We both love public transportation, and the Bay Area has some pretty amazing public transit options, so we have a lot of flexibility here, but this does pare down our search a bit. We definitely don't need to go house hunting in Mountain View, for example, she'd be commuting at least 3 hours a day! But maybe there are some nearby transit dead zones we don't know of yet? It's worth exploring.
+
+
+**We don't want more home than we can afford.** Stretching ourselves thin to own the worst home in a nice neighborhood doesn't interest us. But we don't want the nicest home in the neighborhood, either. There's probably a lot of middle-ground that would be great for us.
+
+**Then there's crime.** Some areas are better known for it than others, but we haven't spent time in any of them, so we don't really know how things are. Feeling safe in our neighborhood is a big deal, so I decided I'd take a hard look at crime data. Violent crime is the primary concern. I'd much rather have my car stolen and recovered every single night than have a firearm pulled on me once.
+
+We brainstormed a bunch of other criteria -- proximity to Trader Joe's & Whole Foods, cheap nearby Thai food, walkability, bikeability, and outdoor parks with workout equipment, to list a few -- but I expect the three criteria above will already give us a good start. So let's get to the data!
+
+## Credentials and Source
+
+You can explore my work and fork the source code for this project at [https://github.com/drfloob/ExploringTheBayAreaThroughData](https://github.com/drfloob/ExploringTheBayAreaThroughData). If you do anything neat with it, [let me know](mailto:aj@drfloob.com?subject=I did something cool with ExploringTheBayAreaThroughData)!
+
+This script requires a Google Maps Directions API Key, stored in `credentials.R`. See `README.md` (in the source above) for how to store it. You'll also need to install and use `GDAL` outside of this script to convert between geographic shape files and GeoJSON. This script will prompt you with instructions when you need to do that step.
+
+## Setup
+
+Be sure to call `setwd("/path/to/this/repo")` before running the script. I've heard that R Projects obviate this step, but I haven't played with them yet.
+
+This script also makes use of a lot of libraries. I could probably pare it down to use about a third fewer, but I wanted to explore different ways of doing things in R. That said, on the setup:
+
+```{r script_setup, results="hide", warning=FALSE, message=FALSE}
+# install.packages(c("gdata", "jsonline", "RCurl", "tidyr", "dplyr", "data.table", "stringr", "zipcode", "leaflet", "httr", "readr", "lawn", "RColorBrewer"))
+
+library(gdata)
+library(jsonlite)
+library(RCurl)
+library(tidyr)
+library(dplyr)
+library(data.table)
+library(stringr)
+library(zipcode)
+library(leaflet)
+library(httr)
+library(RColorBrewer)
+library(ggplot2)
+
+data("zipcode")
+
+credFile <- "credentials.R"
+source(credFile)
+```
+
+
+## The Data
+
+### Home prices
+
+Zillow [openly publishes](http://www.zillow.com/research/data/) their own home price index (see [ZHVI methodology](http://www.zillow.com/research/zhvi-methodology-6032/)), organized by geographic granularity level. To begin to explore what this data could tell us, I settled on looking at their index for single-family homes, organized by zip code. This gives less geographic granularity than their neighborhood metrics, but it makes correlating crime locations easier (which we'll see later).
+
+The most recent home index should be all that's needed, and the data covers the entire country, so paring it down to just February 2016 observations for the San Francisco Metropolitan Area should be a good start.
+
+```{r zillow_data, results="hide"}
+# Parse zillow data by zip code
+fn <- "zillowData.byZip.dump"
+if(!file.exists(fn)) {
+    zdatafn <- "zdata/Zip_Zhvi_SingleFamilyResidence.csv"
+    zdataurl <- "http://files.zillowstatic.com/research/public/Zip/Zip_Zhvi_SingleFamilyResidence.csv"
+    
+    if (!dir.exists(dirname(zdatafn))) {
+      dir.create(dirname(zdatafn), recursive = TRUE)
+    }
+    if (!file.exists(zdatafn)) {
+        download.file(zdataurl, zdatafn, method = "libcurl")
+    }
+    zdata <- read.csv(zdatafn, stringsAsFactors = FALSE) %>% 
+        filter(Metro == "San Francisco") %>% 
+        select(city=City, zip=RegionName, zhvi=X2016.02)
+    
+} else {
+    dump(c('sf', 'sfsimp'), fn)
+    source(fn)
+}
+```
+
+```{r metro, purl=FALSE}
+str(zdata)
+```
+
+Excellent! `r nrow(zdata)` home value indexes by zip code, in the San Francisco Metro area. That should do nicely.
+
+To explore the data a bit, let's take a look at the distribution of home indexes.
+```{r zhvi_summary, purl=FALSE}
+summary(zdata$zhvi)
+```
+
+```{r zhvi_distribution, results="asis", purl=FALSE}
+qplot(zhvi, data=zdata, 
+      geom="histogram", binwidth=150000, 
+      xlab="ZHVI for Feb, 2016 (millions of dollars)") + 
+    scale_x_continuous(breaks=seq(0,6000000,length.out=7),
+        labels=function(x) { sprintf("$%dM",x/1000000) })
+```
+
+The bulk of the areas are indexed between $500K and $1.5M, which seems intuitively reasonable. But I think we can safely rule out the `r nrow(zdata[zdata$zhvi > 2000000,])` areas with ZHVI > $2M. 
+
+### Crime
+
+This script pulls down crime data from 20 open APIs for different areas, thanks primarily to the work of the [Socrata](https://www.socrata.com/) team on the wonderful [CrimeReports.com](https://preview.crimereports.com/), and thanks to the willingness of the many city and county government agencies that opened up their crime data to the public. Bravo! I hope more will follow your examples.
+
+To try to compare apples to apples, the script pulls down events that occurred from January 1st to March 31st, 2016, with one exception: Oakland PD only supplies a rolling 90 days of crime data, so I pull down the available 90 days and fudge them to look like they happened between 1/1 and 3/31. This helps in filtering out some data entry errors later on.
+
+```{r crime_pull, results="hide"}
+if (!dir.exists("cdata/")) {
+    dir.create("cdata")
+}
+
+commonLimits <- paste0("$limit=500000&$where=%s between '2016-01-01T00:00:00.000' and '2016-03-31T23:59:59.999'&$$app_token=", appToken)
+pullCrime <- function(url, fn, dt, cl=commonLimits) {
+    l <- sprintf(cl, dt)
+    url <- paste0(url, l)
+    # print(url)
+    if (!file.exists(fn)) {
+        x <- httr::GET(url=URLencode(url))
+        write.csv(content(x, col_names=TRUE, col_types=NULL), file = fn)
+    }
+    read.csv(fn, colClasses = "character")
+}
+
+pullCrimeGraphics <- function(url, fn, postData, dt, dateFormat, as.is=NULL) {
+    if (!file.exists(fn)) {
+        resp <- POST(url, body = postData, encode = "json", add_headers("Content-Type"="application/json", Accept="application/json", "Content-Length"=str_length(postData)))
+        df <- do.call(rbind.data.frame, c(content(resp)$d, stringsAsFactors=FALSE))
+        write.csv(df, file=fn)
+    }
+    df <- read.csv(fn, as.is=as.is)
+
+    # CrimeGraphics nests multiple crimes in the same location into a single
+    # observation. This code undoes that.
+    df <- unnest(df, Description = lapply( 
+                     strsplit(Description, split="<big>", fixed = TRUE),
+                     function(x){x[-1]}))
+    df
+}
+
+# SF crime API
+sfcrimeurl <- "https://data.sfgov.org/resource/cuks-n6tp.csv?"
+sfcrimefn <- "cdata/sfCrime.csv"
+sfc <- pullCrime(sfcrimeurl, sfcrimefn, "date")
+
+# Oakland crime API
+# special, since they only provide 90 days of rolling crime data
+oakcrimeurl <- "https://data.oaklandnet.com/resource/3xav-7geq.csv?"
+oakcrimefn <- "cdata/oakCrime.csv"
+oakcl <- paste0("$limit=500000&$$app_token=", appToken)
+oak <- pullCrime(oakcrimeurl, oakcrimefn, "datetime", oakcl)
+
+# Berkeley crime API
+berkcrimeurl <- "https://data.cityofberkeley.info/resource/s24d-wsnp.csv?"
+berkcrimefn <- "cdata/berkCrime.csv"
+berk <- pullCrime(berkcrimeurl, berkcrimefn, "eventdt")
+
+# Daly City crime (not an official API)
+dccrimeurl <- "http://dcpd.crimegraphics.com/2013/MapData.asmx/GetMapPoints"
+dccrimefn <- "cdata/dcCrime.csv"
+dccrimepost <- '{"AGCODE":"DCPD","StartDate":"01/01/2016","EndDate":"03/31/2016","MapType":"I","GroupTypes":"851,459,240,211","CirLat":0,"CirLon":0,"CirRad":0}'
+dcdateformat <- "%m/%d/%Y %H:%M:%S %p"
+dcasis <- c("Description", "Title", "Group", "TabTitle", "Location", "Icon", "Shadow", "Status", "TimeOpened", "DateClosed", "TimeClosed")
+dc <- pullCrimeGraphics(dccrimeurl, dccrimefn, dccrimepost, "DateOpened", dcdateformat, dcasis)
+
+# Redwood City
+rwccrimeurl <- "https://moto.data.socrata.com/resource/9wfx-9qes.csv?"
+rwccrimefn <- "cdata/rwcCrime.csv"
+rwc <- pullCrime(rwccrimeurl, rwccrimefn, "incident_datetime")
+
+# Menlo Park Police Dept.
+mpcrimeurl <- "https://moto.data.socrata.com/resource/ex86-feqy.csv?"
+mpcrimefn <- "cdata/mpCrime.csv"
+mp <- pullCrime(mpcrimeurl, mpcrimefn, "incident_datetime")
+
+# Piedmont
+piedcrimeurl <- "https://moto.data.socrata.com/resource/p52h-m2j9.csv?"
+piedcrimefn <- "cdata/piedmontCrime.csv"
+pied <- pullCrime(piedcrimeurl, piedcrimefn, "incident_datetime")
+
+# Emeryville
+emcrimeurl <- "https://moto.data.socrata.com/resource/icdc-r3z6.csv?"
+emcrimefn <- "cdata/emCrime.csv"
+em <- pullCrime(emcrimeurl, emcrimefn, "incident_datetime")
+
+# San Leandro
+slcrimeurl <- "https://moto.data.socrata.com/resource/6nbc-apvm.csv?"
+slcrimefn <- "cdata/slCrime.csv"
+sl <- pullCrime(slcrimeurl, slcrimefn, "incident_datetime")
+
+# Albany
+albanycrimeurl <- "https://moto.data.socrata.com/resource/n5yu-6kr8.csv?"
+albanycrimefn <- "cdata/albanyCrime.csv"
+albany <- pullCrime(albanycrimeurl, albanycrimefn, "incident_datetime")
+
+# El Cerrito
+eccrimeurl <- "https://moto.data.socrata.com/resource/a9zr-qcds.csv?"
+eccrimefn <- "cdata/ecCrime.csv"
+ec <- pullCrime(eccrimeurl, eccrimefn, "incident_datetime")
+
+# Lafayette
+lfcrimeurl <- "https://moto.data.socrata.com/resource/bxwm-gjq4.csv?"
+lfcrimefn <- "cdata/lfCrime.csv"
+lf <- pullCrime(lfcrimeurl, lfcrimefn, "incident_datetime")
+
+# Campbell
+campbellcrimeurl <- "https://moto.data.socrata.com/resource/shz2-ig3z.csv?"
+campbellcrimefn <- "cdata/capmbellCrime.csv"
+campbell <- pullCrime(campbellcrimeurl, campbellcrimefn, "incident_datetime")
+
+# Mountain View
+mtvcrimeurl <- "https://moto.data.socrata.com/resource/k56q-mt3c.csv?"
+mtvcrimefn <- "cdata/mtvCrime.csv"
+mtv <- pullCrime(mtvcrimeurl, mtvcrimefn, "incident_datetime")
+
+# Union City
+uccrimeurl <- "https://moto.data.socrata.com/resource/xqci-zc8x.csv?"
+uccrimefn <- "cdata/ucCrime.csv"
+uc <- pullCrime(uccrimeurl, uccrimefn, "incident_datetime")
+
+# Fremont
+frcrimeurl <- "https://moto.data.socrata.com/resource/nnzs-rxi5.csv?"
+frcrimefn <- "cdata/frCrime.csv"
+fr <- pullCrime(frcrimeurl, frcrimefn, "incident_datetime")
+
+# Dublin
+dublincrimeurl <- "https://moto.data.socrata.com/resource/ifng-r995.csv?"
+dublincrimefn <- "cdata/dublinCrime.csv"
+dublin <- pullCrime(dublincrimeurl, dublincrimefn, "incident_datetime")
+
+# Pleasant Hill
+phcrimeurl <- "https://moto.data.socrata.com/resource/i8a5-7vrs.csv?"
+phcrimefn <- "cdata/phCrime.csv"
+ph <- pullCrime(phcrimeurl, phcrimefn, "incident_datetime")
+
+# Martinez
+martcrimeurl <- "https://moto.data.socrata.com/resource/vpaa-2jww.csv?"
+martcrimefn <- "cdata/martinezCrime.csv"
+mart <- pullCrime(martcrimeurl, martcrimefn, "created_at")
+
+
+
+# Counties - potentially difficult to integrate with city police data for this project
+
+# Alameda County crime API
+accrimeurl <- "https://moto.data.socrata.com/resource/bvi2-5rde.csv?"
+accrimefn <- "cdata/acCrime.csv"
+acc <- pullCrime(accrimeurl, accrimefn, "incident_datetime")
+```
+
+### Tidying and merging the crime the data
+
+The goal is eventually to merge all of this crime data into a single tidy data.frame. This requires a bit of manipulation.
+
+Since we care primarily about violent crime, but pulled down all crime data, we need to create a description field to filter on. Some of the data sources split crime descriptions between multiple fields, so we take the step to merge them into one `description` field.
+
+
+```{r crime_desc_gather, results="hide"}
+sfc <- mutate(sfc, description=paste(
+    sep=" - ", as.character(category), as.character(descript)))
+oak <- mutate(oak, description=paste(
+    sep=" - ", as.character(crimetype), as.character(description)))
+berk <- mutate(berk, description=paste(
+    sep=" - ", as.character(cvlegend), as.character(offense)))
+dc <- mutate(dc, description=paste(sep=" - ", as.character(Title), 
+    as.character(TabTitle), as.character(Description)))
+rwc <- mutate(rwc, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+mp <- mutate(mp, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+pied <- mutate(pied, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+em <- mutate(em, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+sl <- mutate(sl, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+albany <- mutate(albany, description=paste(sep=" - ", 
+    as.character(incident_type_primary), as.character(parent_incident_type),
+    as.character(incident_description)))
+ec <- mutate(ec, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+lf <- mutate(lf, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+campbell <- mutate(campbell, description=paste(sep=" - ", 
+    as.character(incident_type_primary), as.character(parent_incident_type),
+    as.character(incident_description)))
+mtv <- mutate(mtv, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+uc <- mutate(uc, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+fr <- mutate(fr, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+dublin <- mutate(dublin, description=paste(sep=" - ", 
+    as.character(incident_type_primary), as.character(parent_incident_type),
+    as.character(incident_description)))
+ph <- mutate(ph, description=paste(sep=" - ", as.character(incident_type_primary), 
+    as.character(parent_incident_type), as.character(incident_description)))
+mart <- mutate(mart, description=paste(sep=" - ", as.character(incident_type_primary),
+    as.character(parent_incident_type), as.character(incident_description)))
+acc <- mutate(acc, description=paste(sep=" - ", as.character(incident_type_primary),
+    as.character(parent_incident_type), as.character(incident_description)))
+```
+
+We will also need uniform location information on each crime. Some sources include independent latitude and longitude variables, others include a character variable that looks like `"POINT (-122.317569 37.863617)"`, and few others only have block-level information like `"TELEGRAPH AV & 40TH ST"`. The first two are fairly easy to deal with, but the latter sort of entries are being ignored for now, since I believe Google Maps API calls to get latitude and longitude information can get expensive into tens of thousands of requests.
+
+```{r getlatlon, results="hide"}
+getLatLon <- function(ds, var) {
+    re <- "([-\\.[:alnum:]]+)\\s([-\\.[:alnum:]]+)"
+    ds %>% extract_(var, c("longitude", "latitude"), regex=re, remove = FALSE, convert = TRUE)
+}
+sfc <- getLatLon(sfc, "location")
+oak <- getLatLon(oak, "location_1")
+berk <- getLatLon(berk, "block_location")
+dc <- rename(dc, longitude=Longitude, latitude=Latitude)
+```
+
+Since we're pulling dates as character strings, and since they're in all different field names, here we convert them into a uniform `date` field. Most sources share the same date format, but a few are special snowflakes with different date formats.
+
+```{r dateformat, results="hide"}
+dateformat.socrata <- "%Y-%m-%d %H:%M:%S"
+dateformat.crimegraphics <- "%m/%d/%Y %H:%M:%S %p"
+
+print("unifying dates")
+sfc$date <- as.POSIXct(strptime(paste(sfc$date, sfc$time), "%Y-%m-%d %H:%M"))
+oak$date <- as.POSIXct(strptime(oak$datetime, dateformat.socrata))
+berk$date <- as.POSIXct(strptime(paste(berk$eventdt, berk$eventtm), "%Y-%m-%d %H:%M"))
+dc$date <- as.POSIXct(strptime(dc$DateOpened, dateformat.crimegraphics))
+rwc$date <- as.POSIXct(strptime(rwc$incident_datetime, dateformat.socrata))
+mp$date <- as.POSIXct(strptime(mp$incident_datetime, dateformat.socrata))
+pied$date <- as.POSIXct(strptime(pied$incident_datetime, dateformat.socrata))
+em$date <- as.POSIXct(strptime(em$incident_datetime, dateformat.socrata))
+sl$date <- as.POSIXct(strptime(sl$incident_datetime, dateformat.socrata))
+albany$date <- as.POSIXct(strptime(albany$incident_datetime, dateformat.socrata))
+ec$date <- as.POSIXct(strptime(ec$incident_datetime, dateformat.socrata))
+lf$date <- as.POSIXct(strptime(lf$incident_datetime, dateformat.socrata))
+campbell$date <- as.POSIXct(strptime(campbell$incident_datetime, dateformat.socrata))
+mtv$date <- as.POSIXct(strptime(mtv$incident_datetime, dateformat.socrata))
+uc$date <- as.POSIXct(strptime(uc$incident_datetime, dateformat.socrata))
+fr$date <- as.POSIXct(strptime(fr$incident_datetime, dateformat.socrata))
+dublin$date <- as.POSIXct(strptime(dublin$incident_datetime, dateformat.socrata))
+ph$date <- as.POSIXct(strptime(ph$incident_datetime, dateformat.socrata))
+mart$date <- as.POSIXct(strptime(mart$created_at, dateformat.socrata))
+acc$date <- as.POSIXct(strptime(acc$incident_datetime, dateformat.socrata))
+```
+
+Here is also where Oakland dates get fudged for the sake of uniformity.
+
+```{r dateformat_oak, results="hide"}
+# normalize oakland crime dates to 1/1 to 3/31. This is so we can filter out
+# wildly inaccurate dates later on.
+oakdtdiff <- min(oak$date, na.rm = T) - as.POSIXct("2016-01-01")
+oak <- mutate(oak, date = date - oakdtdiff)
+```
+
+In the final step before merging the data, in case we should ever need to look it up, each independent crime data set is tagged with a name indicating its original data set.
+
+```{r tagorigin, results="hide"}
+sfc$origin <- "sfc"
+oak$origin <- "oak"
+berk$origin <- "berk"
+dc$origin <- "dc"
+rwc$origin <- "rwc"
+mp$origin <- "mp"
+pied$origin <- "pied"
+em$origin <- "em"
+sl$origin <- "sl"
+albany$origin <- "albany"
+ec$origin <- "ec"
+lf$origin <- "lf"
+campbell$origin <- "campbell"
+mtv$origin <- "mtv"
+uc$origin <- "uc"
+fr$origin <- "fr"
+dublin$origin <- "dublin"
+ph$origin <- "ph"
+mart$origin <- "mart"
+acc$origin <- "acc"
+```
+
+Now we merge! And while we're at it, eliminate observations for dates that aren't within our date range, likely due to clerical errors.
+
+```{r mergecrimedata, results="hide"}
+merged <- Reduce(function(x,y) {
+    rbind(select(x, origin, description, date, latitude, longitude),
+          select(y, origin, description, date, latitude, longitude))
+}, list(sfc,oak,berk,dc,rwc,mp,pied,em,sl,albany,ec,lf,campbell,mtv,uc,fr,dublin,ph,mart,acc)) %>% 
+    mutate(longitude = as.numeric(longitude), latitude = as.numeric(latitude))
+
+print("refiltering by date") # just in case
+merged <- filter(merged, date >= "2016-01-01 00:00" & date < "2016-04-01 00:00")
+```
+
+I mentioned earlier there being an issue with unknown crime locations. Let's see how bad it is.
+
+```{r missinglatlon, collapse=TRUE, purl=FALSE}
+nrow(merged)
+sum(is.na(merged$latitude))
+```
+
+Not so bad, only `r sprintf("%0.2f%%", sum(is.na(merged$latitude))/nrow(merged)*100)` of the data is unworkable at the moment. Let's see how it's distributed before we scrap it.
+
+```{r missinglatlon-dist, purl=FALSE}
+x <- merged[is.na(merged$latitude),] %>% group_by(origin) %>% summarise(count=n()) %>% arrange(desc(count))
+x$pct <- unlist(lapply(x$origin, function(o) {
+    sprintf("%0.2f%%", filter(x, origin==o)$count / nrow(filter(merged, origin==o)) * 100)
+}))
+print(x)
+```
+
+Uf, Oakland is getting hit hard here. Eliminating those observation will most likely skew the results in favor of Oakland. For now, it's simplest to keep that bias in mind when evaluating the results. Thankfully, all of the observations with missing lat/lng values do contain approximate street addresses, so we can remedy this issue later on.
+
+```{r scrap missing_latlng, results="hide"}
+merged <- filter(merged, !is.na(latitude) & !is.na(longitude))
+```
+
+The crime data isn't yet specific to the crimes we're concerned about, so let's fix that:
+
+```{r storeMergedNrow, echo=FALSE, results="hide"}
+merged.preFilter.nrow <- nrow(merged)
+```
+
+```{r filter_crimes, results="hide"}
+crimeDescGrepPattern <- "kidnap|weapon|violent|firearm|gun|deadly|weapon|strongarm|homicide|knife|murder"
+merged <- rowwise(merged) %>% filter(grepl(crimeDescGrepPattern, description, ignore.case=TRUE))
+
+falsePositiveCrimeDescGrepPattern <- "no weapon|poss|carry|turn"
+merged <- rowwise(merged) %>% filter(!grepl(falsePositiveCrimeDescGrepPattern, description, ignore.case=TRUE))
+```
+
+This performs two passes on the data, first finding positive matches for crime descriptions we care about, then removing a few false positives I identified while combing over the data. The resulting data set contains only `r sprintf("%0.2f%%", nrow(merged) / merged.preFilter.nrow * 100)` of all crimes reported! Thankfully most crimes are non-violent.
+
+This next step is a bit fuzzy, but that's alright for our purposes. It associates a zip code with the latitude/longitude of the crime observation by nearest match. This *does not* mean we have the *correct* zip code for the crime location, only that we have associated the nearest centroid (usually) of a zip code with each observation. If you can imagine a crime happening at the edge of a big city, bordering a small city, you can figure out how this would provide inaccurate associations.
+
+This associated zip code is only being used to filter down the set of geographic features in our zip code map outlines, so its accuracy isn't too important. A more accurate, but more computationally-expensive, zip code association is performed later.
+
+```{r associate_zips, results="hide"}
+zc <- data.table(zipcode, key=c("latitude", "longitude"))
+merged <- data.table(merged, key=c("latitude", "longitude"))
+
+getZipViaLstSqrz <- function(lng,lat) {
+    vec <- with(zc, (lng-longitude)^2 + (lat-latitude)^2)
+    zc[which.min(vec),]$zip
+}
+
+merged <- merged %>% rowwise() %>% mutate(zip=getZipViaLstSqrz(longitude, latitude))
+```
+
+And with that, I think we've done all the processing we need to do with crime data. Let's take a quick look at our results.
+
+```{r evalMergedPostFIlter, purl=FALSE, warning=FALSE}
+str(merged)
+merged %>% group_by(zip) %>% summarize(count=n()) %>% arrange(desc(count))
+summary(merged)
+```
+
+### Public Transit Time
+
+Using the [Google Maps - Directions API](https://developers.google.com/maps/documentation/directions/) is fairly straight forward. For every zip code we have crime data for, this crafts a query that asks for public transportation directions from that zip code to Radius' offices in San Francisco. If you've ever asked Google Maps for public transportation directions, it should come as no surprise to learn that each result can suggest multiple routes, and each route can have multiple legs. This code loops over all of them and calculates the average transportation time for each zip code.
+
+The first time I ran this, I was getting some odd results. Places close to radius would take over an hour, while places in Oakland would take 45 minutes. The issue was that Google's start location for each zip code (possibly the centroid of the area) can sometimes require 30 minutes of walking just to get to the bus stop, followed by a sub-30-minute bus ride! My solution to this is to eliminate walk time from the directions, in the hope that we end up living trivially close to a bus stop or bart/cal train station. Walk times between public transportation legs, and at the end of the trip, are already fairly trivial.
+
+
+```{r gmapsAPI, results="hide"}
+gfn <- "gData.dump"
+if (!file.exists(gfn)) {
+    if (!file.exists(credFile)) {
+        stop("Missing credentials file: credentials.R. See README.md for formatting")
+    }
+    
+    arrival_time <- ymd_h("2016-05-02 9am")
+    url <- function(zip) {
+        root <- "https://maps.googleapis.com/maps/api/directions/json?"
+        u <- paste(sep="", 
+                   root, 
+                   "origin=", zip,
+                   "&destination=225 Bush St, San Francisco, CA",
+                   "&mode=transit",
+                   "&avoid=tolls",
+                   paste0("&arrival_time=", as.numeric(arrival_time)),
+                   "&key=", apiKey)
+        URLencode(u)
+    }
+    gdata <- list()
+
+    uniqueZips <- unique(merged$zip)
+    for (i in seq_along(uniqueZips)) {
+        print(uniqueZips[i])
+        doc <- fromJSON(url(uniqueZips[i]))
+        gdata[[as.character(uniqueZips[i])]] <- doc
+    }
+    
+    save(gdata, file = gfn)
+} else {
+    load(file = gfn)
+}
+
+avgRouteDuration <- function(routes, i) {
+    ret <- Reduce(function(s, leg) {
+        v <- Reduce(function(t, step) {
+            # exclude walk time from transit directions. It's the biggest source
+            # of variability in transit durations since it's the slowest transit
+            # method by an order of magnitude.
+            tmp <- step[step$travel_mode != "WALKING",]
+            sum(tmp$duration$value)
+        }, leg$steps, 0)
+        s <- s + v
+        s
+    }, routes[i,"legs"], 0)
+    #print(list(ret=ret))
+    ret
+}
+routefn <- "gdata.routes.dump"
+if (!file.exists(routefn)) {
+    distances <- data.frame(zip=numeric(), distance=numeric())
+    # avg minutes per trip
+    if (!dir.exists("gdata")) {
+        dir.create("gdata")
+    }
+    for (n in names(gdata)) {
+        vname <- paste(sep="", "g", n)
+        fn <- paste0("gdata/", n, ".dump")
+        if (file.exists(fn)) {
+            source(fn)
+        } else {
+            runsum <- 0
+            g <- gdata[[n]]
+            runcnt <- 0
+            #print(list(lengthOfGRoutes = length(g$routes)))
+            if (length(g$routes) == 0) {
+                runsum<-99999
+                runcnt<-1
+            } else {
+                for (r in 1:nrow(g$routes)) {
+                    s <- avgRouteDuration(g$routes, r)
+                    runsum <- runsum + s
+                    runcnt <- runcnt + 1
+                }
+            }
+            # dput(list(n, sprintf("%0.2f", runsum/runcnt/60)))
+            assign(vname, list(zip=as.numeric(n), distance=runsum/runcnt/60))
+            dump(vname, file=fn)
+        }
+        
+        distances <- rbind(distances, get(vname))
+    }
+    save(distances, file = routefn)
+} else {
+    load(routefn)
+}
+```
+
+Let's explore the results a bit.
+
+```{r evalQuantileDistance, purl=FALSE}
+quantile(distances$distance)
+```
+
+There's definitely a few zip codes off the beaten path (who is reporting crimes in Estonia?), but the majority of commute times are under an hour. That's great!
+
+## Mapping preparations
+
+To see the boundaries of our zip codes on a map, we need to download some shape files from the US Census Bureau, and convert them to GeoJSON format for `leaflet`. This is where `GDAL` comes into play.
+
+```{r gatherZipShapes, results="hide", warning=FALSE, message=FALSE}
+source("gatherZipcodeShapes.R")
+```
+
+This file also performs the more accurate zip code association, using the `lawn` R package to calculate which crime lat/lng values lie within which zip code shapes.
+
+## Maps
+
+### Crime Clusters
+
+Click each cluster to zoom in and expand. Click each marker for individual crime details.
+
+```{r crime_map, cache=FALSE}
+mapPopups <- with(merged, sprintf("(%f,%f) %s [zip: %s][origin: %s]", latitude, longitude, description, zip, origin))
+
+m <- leaflet(data=merged)
+m <- setView(m, lat=37.65, lng=-122.23, zoom=9)
+m <- addProviderTiles(m, "CartoDB.Positron")
+m <- addMarkers(m, lng=~longitude, lat=~latitude, clusterOptions = markerClusterOptions(maxClusterRadius=30), popup = mapPopups)
+m <- addGeoJSON(map=m, geojson = topoData, color = "#333", opacity = "0.6", weight = 2)
+m
+```
+
+
+### Choropleth Map of Crime by Zipcode
+
+This map presents the same crime data as the previous map, but in summary for each zip code.
+
+```{r choroMapCrimeByZip, cache=FALSE}
+pal <- colorNumeric(c("green", "black"), domain = range(lapply(topoData$features, function(f) {f$properties$pt_count})))
+
+td2 <- topoData
+td2$style <- list(
+    fillOpacity = 0.8
+)
+td2$features <- lapply(td2$features, function(feat) {
+    feat$properties$style <- list(fillColor = pal(as.numeric(feat$properties$pt_count)))
+    # feat$properties$popupContent <- paste("Crime count: ", feat$properties$pt_count)
+    feat
+})
+
+m <- leaflet(data=merged)
+m <- setView(m, lat=37.75, lng=-122.25, zoom=10)
+m <- addProviderTiles(m, "CartoDB.Positron")
+m <- addGeoJSON(map=m, geojson = td2, color = "#333", opacity = "0.75", weight = 2)
+m <- addLegend(m, "bottomleft", pal = pal, title="Crimes, Q1 2016", opacity = 0.8,
+               values = unlist(lapply(topoData$features, function(f) {f$properties$pt_count})))
+m
+```
+
+
+
+### Choropleth Map of Public Transit Times
+
+```{r choroMapPublicTransit, cache=FALSE, warning=FALSE}
+pal.range <- c(0,90)
+pal <- colorNumeric(c("green", "black", "red"), domain = pal.range)
+
+td.dist <- topoData
+td.dist$style <- list(
+    fillOpacity = 0.8
+)
+td.dist$features <- lapply(td.dist$features, function(feat) {
+    feat$properties$style <- list(fillColor = pal(as.numeric(distances[distances$zip == feat$properties$ZCTA5CE10,"distance"])))
+    feat
+})
+
+
+m <- leaflet()
+m <- setView(m, lat=37.75, lng=-122.25, zoom=10)
+m <- addProviderTiles(m, "CartoDB.Positron")
+m <- addGeoJSON(map=m, geojson = td.dist, color = "#333", opacity = "0.75", weight = 2)
+m <- addLegend(m, "bottomleft", pal = pal, title="Transit Time", opacity = 0.8, values = pal.range,
+               labFormat = function(type, breaks) {
+                   lapply(breaks, function(b) {
+                       if (b < 60) paste0(b,"m")
+                       else {
+                           paste0(b%/%60,"h ", b%%60,"m")
+                       }
+                   })
+               })
+m
+```
+
+
+### Choropleth Map of Zillow Home Value Indexes
+
+```{r choroMapZhvi, cache=FALSE}
+pal.breaks <- c(0,5,8,13,18,100)*100000
+x <- cut(zdata$zhvi, breaks=pal.breaks)
+pal.qtl <- as.vector(table(x)) / sum(as.vector(table(x)))
+lapply(seq_along(pal.qtl), function(i) {sum(pal.qtl[1:i])}) %>% unlist -> pal.qtl
+
+pal.range = range(zdata$zhvi)
+pal.pal <- brewer.pal(n=4, "RdYlGn") %>% rev
+pal <- colorQuantile(pal.pal, domain = zdata$zhvi, probs = c(0, pal.qtl))
+# previewColors(pal, arrange(zdata, zhvi)$zhvi)
+
+td.z <- topoData
+td.z$style <- list(
+    fillOpacity = 0.8
+)
+td.z$features <- lapply(td.z$features, function(feat) {
+    feat$properties$style <- list(fillColor = pal(zdata[zdata$zip == feat$properties$ZCTA5CE10,"zhvi"]))
+    feat
+})
+
+m <- leaflet()
+m <- setView(m, lat=37.75, lng=-122.25, zoom=10)
+m <- addProviderTiles(m, "CartoDB.Positron")
+m <- addGeoJSON(map=m, geojson = td.z, color = "#333", opacity = "0.75", weight = 2)
+m <- addLegend(m, "bottomleft", pal = pal, title="ZHVI", opacity = 0.8, values = zdata$zhvi,
+               labFormat = function(type, qtl, p) {
+                   fmt <- function(x) {
+                       if (x < 1000000)
+                           paste0("$", x %/% 1000, "K")
+                       else
+                           sprintf("$%0.1fM", x / 1000000)
+                   }
+                   ret <- c()
+                   qtl <- as.vector(qtl)
+                   for (i in 2:length(qtl)) {
+                       ret <- c(ret, paste(sep=" - ", fmt(qtl[i-1]), fmt(qtl[i])))
+                   }
+                   ret
+               })
+m
+```
+
+## Results
+
+There are definitely some areas around South San Francisco and the East Bay that we'll continue to check out; areas with a good compromise between crime levels, home price, and commute time. The work will be finding somewhere to live within a short walk of public transit stations, and evaluating crime on a smaller scale within those neighborhoods.
+
+## Challenges
+
+Crime data isn't available for many cities in the Bay Area. And sometimes crimes in those areas are reported by police from another city, for example as often seen with stolen vehicle recoveries. The result is the appearance that some areas have *very few* crimes, when in reality we have no data from the precincts that operate primarily in those areas. Entire cities with apparently next-to-no violent crime were filtered out to avoid this kind of misrepresentation, but we risk ignoring areas that actually have next-to-no violent crime. [CrimeReports.com](https://preview.crimereports.com/) was used informally to verify my results, and I used Piedmont as a control to ensure I didn't filter it out of consideration, since I think they have some of the lowest crime rates around. The filtering was performed well below the level that would mark Piedmont crime data as invalid.
+
+As mentioned earlier, the crime data for Oakland may be a bit skewed in favor of Oakland since we threw away ~15% of the pre-filtered results due to missing location information.
+
+## Future Improvements
+
+I'm not sure how many of the discarded Oakland crimes were *relevant* to this study, so filtering the descriptions on that discarded set may provide a better picture of how skewed the results are. The ~1300 crimes thrown away may have been entirely filtered out anyway, or they could all be homicides for all I know.
+
+I'd like to look into translating street addresses into lat/lng values for crime data that requires it, to avoid throwing away any valid crime observations.
+
+Not all crimes are equal, but they're represented that way in this study. It would be valuable to create a weighted index of crimes that give more weight to things like homicide, and less to attempted robbery.
+
+I'd like to incorporate all of this data into a single map visualization, based on subjective preferences around home prices, travel times, and crime. Quantifying the relative values of certain crimes vs travel time seemed too onerous for this project, though.
+
+I'm interested in running the same home price index evaluations on other kinds of homes, like condos and multi-family homes. In particular, I'd expect the northeastern neighborhoods of San Francisco to have so few single-family homes that the home value index would look very different for condos.
