@@ -25,10 +25,10 @@ This file is now redundant. All code has been subsumed into `bayAreaZipcodeHeatM
 
 ### credentials.R
 
-'''R
+```R
 apiKey <- "my google maps API key"
 appToken <- "my socrata app token"
-'''
+```
 
 *Note: do not commit this file to your git repository!*
 

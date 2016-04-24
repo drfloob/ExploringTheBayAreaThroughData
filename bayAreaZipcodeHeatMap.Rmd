@@ -10,7 +10,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, cache = FALSE, fig.width=8, fig.height=8, self.contained = TRUE)
+knitr::opts_chunk$set(echo = TRUE, cache = FALSE, fig.width=8, fig.height=6, self.contained = TRUE)
 ```
 
 ## Good news, everyone!
